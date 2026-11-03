@@ -1,0 +1,16 @@
+{
+  "name": "music-mind-core-midi",
+  "version": "0.1.0",
+  "description": "CoreMIDI bridge for Music Mind on iOS",
+  "main": "dist/plugin.js",
+  "types": "dist/plugin.d.ts",
+  "files": ["ios", "dist"],
+  "capacitor": {
+    "ios": {
+      "src": "ios"
+    }
+  },
+  "peerDependencies": {
+    "@capacitor/core": ">=6.0.0"
+  }
+}

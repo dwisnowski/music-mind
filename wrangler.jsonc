@@ -1,0 +1,17 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "music-mind",
+  "main": "worker/index.ts",
+  "compatibility_date": "2026-11-02",
+  "assets": {
+    "binding": "ASSETS",
+    "not_found_handling": "single-page-application"
+  },
+  "routes": [
+    { "pattern": "musicmind.wildideazone.com", "custom_domain": true }
+  ],
+  "observability": {
+    "enabled": true
+  },
+  "upload_source_maps": true
+}
