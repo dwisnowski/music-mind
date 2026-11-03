@@ -226,6 +226,50 @@ a {
   padding: 1rem;
 }
 
+.score-shell {
+  position: relative;
+}
+
+.score-listen-bar {
+  position: sticky;
+  top: 0.65rem;
+  z-index: 6;
+  display: flex;
+  justify-content: flex-end;
+  align-items: center;
+  gap: 0.5rem;
+  width: fit-content;
+  margin: 0 0.5rem -3rem auto;
+  padding: 0.35rem 0.4rem 0.35rem 0.55rem;
+  border-radius: 999px;
+  background: rgba(28, 20, 16, 0.88);
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  box-shadow: 0 10px 28px rgba(28, 20, 16, 0.28);
+  backdrop-filter: blur(10px);
+  color: #f6efe7;
+}
+
+.score-listen-bar .score-bpm {
+  margin: 0;
+  color: rgba(246, 239, 231, 0.8);
+  font-size: 0.85rem;
+}
+
+.score-listen-bar .score-bpm input {
+  width: 3.6rem;
+  border-radius: 999px;
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  background: rgba(255, 255, 255, 0.08);
+  color: #f6efe7;
+  padding: 0.3rem 0.4rem;
+}
+
+.score-listen-btn.listening {
+  background: #c98512;
+  border-color: #c98512;
+  color: #1c1410;
+}
+
 .score-view {
   background: var(--paper);
   border: 1px solid var(--line);
@@ -233,6 +277,16 @@ a {
   box-shadow: var(--shadow);
   padding: 1rem;
   min-height: 45vh;
+}
+
+.score-view.is-listening {
+  box-shadow: var(--shadow), inset 0 0 0 2px rgba(201, 133, 18, 0.35);
+}
+
+/* OSMD vertical cursor — warm amber while listening */
+.score-view.is-listening .cursor,
+.score-view.is-listening [class*="cursor"] {
+  filter: hue-rotate(15deg) saturate(1.2);
 }
 
 .score-view svg {
@@ -339,10 +393,22 @@ a {
   color: rgba(246, 239, 231, 0.75);
 }
 
-.dock .field select {
+.dock .field select,
+.dock .field input {
   background: #2a211c;
   color: #f6efe7;
   border-color: rgba(255, 255, 255, 0.18);
+}
+
+.dock .field input[type="number"] {
+  width: 4.2rem;
+  border-radius: 10px;
+  padding: 0.35rem 0.45rem;
+}
+
+.dock .btn.listening {
+  background: rgba(201, 133, 18, 0.35);
+  border-color: rgba(201, 133, 18, 0.7);
 }
 
 .keyboard {

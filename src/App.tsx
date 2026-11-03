@@ -10,6 +10,7 @@ import { parseMusicXmlTimeline } from "./score/parseMusicXmlTimeline";
 import { SAMPLE_SCORES, type SampleScore } from "./score/samples";
 import type { Hand, LoadedScore } from "./score/types";
 import { FeedbackEngine, type FeedbackState } from "./practice/feedbackEngine";
+import { ScorePlayer } from "./audio/scorePlayer";
 import { WilliamsLights, loadLightProfile, type LightProfile } from "./lights/williamsLights";
 import { ScoreView } from "./ui/ScoreView";
 import { PianoKeyboard, type KeyVisualState } from "./ui/PianoKeyboard";
@@ -19,6 +20,7 @@ import { LightsPanel } from "./ui/LightsPanel";
 export default function App() {
   const engineRef = useRef(new FeedbackEngine());
   const lightsRef = useRef(new WilliamsLights());
+  const playerRef = useRef(new ScorePlayer());
   const adapterRef = useRef<MidiAdapter | null>(null);
   const heardRef = useRef(new Set<number>());
 
@@ -31,8 +33,16 @@ export default function App() {
   const [feedback, setFeedback] = useState<FeedbackState | null>(null);
   const [hand, setHand] = useState<Hand>("both");
   const [heard, setHeard] = useState<Set<number>>(new Set());
+  const [listening, setListening] = useState(false);
+  const [listenEventIndex, setListenEventIndex] = useState<number | null>(null);
+  const [listenBpm, setListenBpm] = useState(80);
   const [lightProfile, setLightProfile] = useState<LightProfile>(() => loadLightProfile());
   const [settingsOpen, setSettingsOpen] = useState(false);
+
+  useEffect(() => {
+    const player = playerRef.current;
+    return () => player.stop({ emitEnded: false });
+  }, []);
 
   useEffect(() => {
     const engine = engineRef.current;
@@ -117,10 +127,52 @@ export default function App() {
     setConnectedName(null);
   }, []);
 
+  const stopListening = useCallback(() => {
+    playerRef.current.stop();
+    setListening(false);
+    setListenEventIndex(null);
+    heardRef.current.clear();
+    setHeard(new Set());
+  }, []);
+
+  const startListening = useCallback(async () => {
+    if (!score) return;
+    // Full song from the start — score follow-along is separate from practice position.
+    setListening(true);
+    setListenEventIndex(0);
+    heardRef.current.clear();
+    setHeard(new Set());
+    try {
+      await playerRef.current.play(score, {
+        bpm: listenBpm,
+        hand: "both",
+        onEvent: (eventIndex) => setListenEventIndex(eventIndex),
+        onNote: (midi, on) => {
+          if (on) heardRef.current.add(midi);
+          else heardRef.current.delete(midi);
+          setHeard(new Set(heardRef.current));
+        },
+        onEnded: () => {
+          setListening(false);
+          setListenEventIndex(null);
+          heardRef.current.clear();
+          setHeard(new Set());
+        },
+      });
+    } catch (err) {
+      setListening(false);
+      setListenEventIndex(null);
+      setMidiError(err instanceof Error ? err.message : String(err));
+    }
+  }, [score, listenBpm]);
+
   const onLoadFile = useCallback(async (file: File | null) => {
     if (!file) return;
     try {
       setMidiError(null);
+      playerRef.current.stop();
+      setListening(false);
+      setListenEventIndex(null);
       const xml = await readScoreFile(file);
       const loaded = parseMusicXmlTimeline(xml, file.name);
       if (loaded.events.length === 0) {
@@ -261,7 +313,39 @@ export default function App() {
 
       <main className="stage">
         {score ? (
-          <ScoreView xml={score.xml} feedback={feedback} />
+          <div className="score-shell">
+            <div className="score-listen-bar" aria-label="Listen controls">
+              <label className="field inline score-bpm">
+                <span>BPM</span>
+                <input
+                  type="number"
+                  min={40}
+                  max={200}
+                  value={listenBpm}
+                  disabled={listening}
+                  onChange={(e) =>
+                    setListenBpm(Math.min(200, Math.max(40, Number(e.target.value) || 80)))
+                  }
+                />
+              </label>
+              <button
+                type="button"
+                className={`btn primary score-listen-btn ${listening ? "listening" : ""}`}
+                onClick={() => {
+                  if (listening) stopListening();
+                  else void startListening();
+                }}
+                title="Play the whole piece from the start (does not change practice position)"
+              >
+                {listening ? "Stop" : "Listen"}
+              </button>
+            </div>
+            <ScoreView
+              xml={score.xml}
+              feedback={feedback}
+              listenEventIndex={listenEventIndex}
+            />
+          </div>
         ) : (
           <div className="empty-score">
             <h2>Load sheet music to practice</h2>
@@ -298,6 +382,29 @@ export default function App() {
         <div className="dock-controls">
           <p className="status">{feedback?.statusText ?? "Connect MIDI and load a score."}</p>
           <div className="dock-buttons">
+            <button
+              type="button"
+              className={`btn ${listening ? "listening" : ""}`}
+              onClick={() => {
+                if (listening) stopListening();
+                else void startListening();
+              }}
+              disabled={!score}
+              title="Play the whole piece from the start (does not change practice position)"
+            >
+              {listening ? "Stop" : "Listen"}
+            </button>
+            <label className="field inline">
+              <span>BPM</span>
+              <input
+                type="number"
+                min={40}
+                max={200}
+                value={listenBpm}
+                disabled={!score || listening}
+                onChange={(e) => setListenBpm(Math.min(200, Math.max(40, Number(e.target.value) || 80)))}
+              />
+            </label>
             <button type="button" className="btn" onClick={() => engineRef.current.reset()} disabled={!score}>
               Restart
             </button>
@@ -305,13 +412,13 @@ export default function App() {
               type="button"
               className="btn"
               onClick={() => engineRef.current.showHint()}
-              disabled={!score || feedback?.done}
+              disabled={!score || feedback?.done || listening}
             >
               Show hint
             </button>
             <label className="field inline">
               <span>Hands</span>
-              <select value={hand} onChange={(e) => onHandChange(e.target.value as Hand)}>
+              <select value={hand} onChange={(e) => onHandChange(e.target.value as Hand)} disabled={listening}>
                 <option value="both">Both</option>
                 <option value="right">Right</option>
                 <option value="left">Left</option>

@@ -24,4 +24,10 @@ export const SAMPLE_SCORES: SampleScore[] = [
     composer: "Claude Debussy",
     path: "/samples/clair-de-lune.mxl",
   },
+  {
+    id: "gymnopedie-no1",
+    title: "Gymnopédie No. 1",
+    composer: "Erik Satie",
+    path: "/samples/gymnopedie-no1.mxl",
+  },
 ];
