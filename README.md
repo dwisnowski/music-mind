@@ -44,14 +44,23 @@ make deploy
 
 Custom domain: `musicmind.wildideazone.com` (Cloudflare Workers). Needs `wrangler login` once.
 
-## iPad (TestFlight)
+## iPad (install on your device)
+
+Needs a Mac with full Xcode and a free Apple ID — no paid Developer Program membership required.
 
 ```bash
 make cap-sync
 make cap-open
 ```
 
-In Xcode: set your Apple Team, then run on a connected iPad or Archive → TestFlight.
+1. Connect the iPad (USB or wireless debugging) and unlock it; trust the computer if prompted.
+2. In Xcode, open the **App** target → **Signing & Capabilities**.
+3. Check **Automatically manage signing**, pick your personal **Team** (Add Account… with your Apple ID if needed).
+4. Choose your iPad as the run destination, then press **Run** (▶).
+
+After the first install, open **Music Mind** from the home screen anytime — the Mac is only needed to install or update. Free Apple IDs expire the signing profile about every **7 days**; if the app won’t launch, reconnect the iPad and Run again from Xcode.
+
+On the iPad the first time: **Settings → General → VPN & Device Management** → trust your developer certificate if iOS asks.
 
 Stock Safari/Chrome on iPad cannot use MIDI — use this app (or MIDIWeb Browser as an interim host for the website).
 
