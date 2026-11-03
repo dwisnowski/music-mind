@@ -7,6 +7,7 @@ import {
 } from "./midi";
 import { readScoreFile } from "./score/loadMusicXml";
 import { parseMusicXmlTimeline } from "./score/parseMusicXmlTimeline";
+import { SAMPLE_SCORES, type SampleScore } from "./score/samples";
 import type { Hand, LoadedScore } from "./score/types";
 import { FeedbackEngine, type FeedbackState } from "./practice/feedbackEngine";
 import { WilliamsLights, loadLightProfile, type LightProfile } from "./lights/williamsLights";
@@ -119,6 +120,7 @@ export default function App() {
   const onLoadFile = useCallback(async (file: File | null) => {
     if (!file) return;
     try {
+      setMidiError(null);
       const xml = await readScoreFile(file);
       const loaded = parseMusicXmlTimeline(xml, file.name);
       if (loaded.events.length === 0) {
@@ -126,10 +128,28 @@ export default function App() {
       }
       setScore(loaded);
       engineRef.current.load(loaded, hand);
+      setSettingsOpen(false);
     } catch (err) {
       setMidiError(err instanceof Error ? err.message : String(err));
     }
   }, [hand]);
+
+  const onLoadSample = useCallback(
+    async (sample: SampleScore) => {
+      const res = await fetch(sample.path);
+      if (!res.ok) {
+        setMidiError(`Could not load sample “${sample.title}”.`);
+        return;
+      }
+      const buffer = await res.arrayBuffer();
+      const fileName = sample.path.split("/").pop() ?? `${sample.id}.musicxml`;
+      const type = fileName.endsWith(".mxl")
+        ? "application/vnd.recordare.musicxml"
+        : "application/xml";
+      await onLoadFile(new File([buffer], fileName, { type }));
+    },
+    [onLoadFile],
+  );
 
   const onHandChange = useCallback((next: Hand) => {
     setHand(next);
@@ -169,6 +189,26 @@ export default function App() {
         </a>
         <h1 className="brand">Music Mind</h1>
         <div className="topbar-actions">
+          <label className="field inline sample-picker">
+            <span className="sr-only">Built-in scores</span>
+            <select
+              defaultValue=""
+              onChange={(e) => {
+                const sample = SAMPLE_SCORES.find((s) => s.id === e.target.value);
+                e.target.value = "";
+                if (sample) void onLoadSample(sample);
+              }}
+            >
+              <option value="" disabled>
+                Samples…
+              </option>
+              {SAMPLE_SCORES.map((sample) => (
+                <option key={sample.id} value={sample.id}>
+                  {sample.title} — {sample.composer}
+                </option>
+              ))}
+            </select>
+          </label>
           <label className="btn primary file-btn">
             Load score
             <input
@@ -239,21 +279,17 @@ export default function App() {
                   onChange={(e) => void onLoadFile(e.target.files?.[0] ?? null)}
                 />
               </label>
-              <button
-                type="button"
-                className="btn large"
-                onClick={() => {
-                  void (async () => {
-                    const res = await fetch("/samples/twinkle.musicxml");
-                    const text = await res.text();
-                    const file = new File([text], "twinkle.musicxml", { type: "application/xml" });
-                    await onLoadFile(file);
-                  })();
-                }}
-              >
-                Try sample
-              </button>
             </div>
+            <ul className="sample-list">
+              {SAMPLE_SCORES.map((sample) => (
+                <li key={sample.id}>
+                  <button type="button" className="btn large" onClick={() => void onLoadSample(sample)}>
+                    <span className="sample-title">{sample.title}</span>
+                    <span className="sample-composer">{sample.composer}</span>
+                  </button>
+                </li>
+              ))}
+            </ul>
           </div>
         )}
       </main>

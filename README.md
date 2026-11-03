@@ -20,7 +20,7 @@ make install
 make run
 ```
 
-Then open Chrome at [http://localhost:5173](http://localhost:5173), allow MIDI, pair the piano (macOS: Audio MIDI Setup → Bluetooth), and load a score (or click **Try sample**).
+Then open Chrome at [http://localhost:5173](http://localhost:5173), allow MIDI, pair the piano (macOS: Audio MIDI Setup → Bluetooth), and load a score — built-in samples include **Für Elise** and **Clair de Lune** (public-domain MusicXML via [MuseTrainer](https://github.com/musetrainer/library)).
 
 | Target | What it does |
 | --- | --- |
