@@ -220,6 +220,37 @@ a {
   background: rgba(47, 111, 237, 0.08);
 }
 
+.connect-notes {
+  margin-top: 0.75rem;
+  padding: 0.55rem 0.7rem;
+  border-radius: 12px;
+  background: rgba(28, 20, 16, 0.04);
+  border: 1px solid var(--line);
+  font-size: 0.9rem;
+}
+
+.connect-notes summary {
+  cursor: pointer;
+  font-weight: 600;
+  list-style-position: outside;
+}
+
+.connect-notes[open] summary {
+  margin-bottom: 0.45rem;
+}
+
+.connect-notes p {
+  margin: 0 0 0.5rem;
+}
+
+.connect-notes ol {
+  margin: 0;
+  padding-left: 1.2rem;
+  display: grid;
+  gap: 0.4rem;
+  color: var(--ink-soft);
+}
+
 .stage {
   min-height: 0;
   overflow: auto;

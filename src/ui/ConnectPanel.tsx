@@ -103,9 +103,50 @@ export function ConnectPanel({
           {inputs.length === 0 && (
             <p className="muted">
               No MIDI inputs yet. Enable Bluetooth MIDI on the piano (Function → Main → Bluetooth),
-              pair in Audio MIDI Setup (Mac) or the app’s Bluetooth sheet (iPad), then refresh.
+              then follow the connection notes below and refresh.
             </p>
           )}
+
+          <details className="connect-notes">
+            <summary>Connection notes</summary>
+            {ios ? (
+              <ol>
+                <li>Turn on the piano and enable Bluetooth MIDI (Function → Main → Bluetooth).</li>
+                <li>
+                  Tap <strong>Bluetooth MIDI…</strong> above (or use the system Bluetooth MIDI sheet) and
+                  connect the piano.
+                </li>
+                <li>Return here and tap <strong>Refresh devices</strong>, then <strong>Connect</strong>.</li>
+              </ol>
+            ) : (
+              <>
+                <p className="muted small">
+                  Bluetooth MIDI on Mac is configured in Audio MIDI Setup — not System Settings → Bluetooth.
+                </p>
+                <ol>
+                  <li>
+                    Power on the keyboard or adapter and put it in pairing / discoverable mode. Enable
+                    Bluetooth on the Mac (System Settings).
+                  </li>
+                  <li>
+                    Open <strong>Audio MIDI Setup</strong> (Spotlight: ⌘Space, type the name; or Finder →
+                    Applications → Utilities).
+                  </li>
+                  <li>
+                    If devices are not visible, choose <strong>Window → Show MIDI Studio</strong>.
+                  </li>
+                  <li>
+                    Click the Bluetooth icon in MIDI Studio (or <strong>Window → Show Bluetooth
+                    Configuration</strong>).
+                  </li>
+                  <li>
+                    Select your device in the list and click <strong>Connect</strong>, then return here and
+                    tap <strong>Refresh devices</strong>.
+                  </li>
+                </ol>
+              </>
+            )}
+          </details>
         </>
       )}
 
