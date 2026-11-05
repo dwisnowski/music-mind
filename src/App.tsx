@@ -23,9 +23,17 @@ import {
   isReservedControlMidi,
   type ControlAction,
 } from "./input/controlKeys";
+import {
+  FallingLightsEngine,
+  FallingLightsGame,
+  FALLING_LEFT_MIDI,
+  FALLING_RIGHT_MIDI,
+} from "./games/fallingLights";
 
 const DOCK_PIN_KEY = "music-mind-dock-pinned";
 const PIANO_CONTROLS_KEY = "mm.pianoControls";
+
+type AppMode = "practice" | "fallingLights";
 
 function loadPianoControlsEnabled(): boolean {
   try {
@@ -39,6 +47,8 @@ function loadPianoControlsEnabled(): boolean {
 
 export default function App() {
   const engineRef = useRef(new FeedbackEngine());
+  const [fallingLightsEngine] = useState(() => new FallingLightsEngine());
+  const fallingLightsRef = useRef(fallingLightsEngine);
   const lightsRef = useRef(new WilliamsLights());
   const playerRef = useRef(new ScorePlayer());
   const adapterRef = useRef<MidiAdapter | null>(null);
@@ -52,6 +62,7 @@ export default function App() {
   const pianoControlsEnabledRef = useRef(loadPianoControlsEnabled());
   const controlKeysRef = useRef(new ControlKeyHandler());
   const dispatchControlRef = useRef<(action: ControlAction) => void>(() => {});
+  const appModeRef = useRef<AppMode>("practice");
 
   const [adapter, setAdapter] = useState<MidiAdapter | null>(null);
   const [inputs, setInputs] = useState<MidiDeviceInfo[]>([]);
@@ -78,6 +89,7 @@ export default function App() {
   const [pianoControlsHelpOpen, setPianoControlsHelpOpen] = useState(false);
   const [dockSpacerPx, setDockSpacerPx] = useState(0);
   const [loadingSampleId, setLoadingSampleId] = useState<string | null>(null);
+  const [appMode, setAppMode] = useState<AppMode>("practice");
 
   const closePianoControlsHelp = useCallback(() => {
     setPianoControlsHelpOpen(false);
@@ -86,10 +98,20 @@ export default function App() {
 
   const listenActive = listenTransport !== "idle";
   const listenPlaying = listenTransport === "playing";
+  const gameActive = appMode === "fallingLights";
+
+  useEffect(() => {
+    appModeRef.current = appMode;
+  }, [appMode]);
 
   useEffect(() => {
     listenTransportRef.current = listenTransport;
   }, [listenTransport]);
+
+  useEffect(() => {
+    const game = fallingLightsRef.current;
+    return () => game.stop();
+  }, []);
 
   useEffect(() => {
     feedbackRef.current = feedback;
@@ -122,7 +144,7 @@ export default function App() {
       adapterRef.current = a;
       setAdapter(a);
       lightsRef.current.setAdapter(a);
-      return a.onMessage((data) => {
+      return a.onMessage((data, timestamp) => {
         const msg = parseMidiMessage(data);
         if (!msg) return;
         if (msg.type === "noteon") {
@@ -135,6 +157,10 @@ export default function App() {
           }
           heardRef.current.add(msg.note);
           setHeard(new Set(heardRef.current));
+          if (appModeRef.current === "fallingLights") {
+            fallingLightsRef.current.noteOn(msg.note, timestamp);
+            return;
+          }
           if (listenTransportRef.current === "idle") {
             engineRef.current.noteOn(msg.note);
           }
@@ -144,6 +170,7 @@ export default function App() {
           }
           heardRef.current.delete(msg.note);
           setHeard(new Set(heardRef.current));
+          if (appModeRef.current === "fallingLights") return;
           if (listenTransportRef.current === "idle") {
             engineRef.current.noteOff(msg.note);
           }
@@ -157,7 +184,7 @@ export default function App() {
   }, []);
 
   useEffect(() => {
-    if (listenActive) return;
+    if (listenActive || gameActive) return;
     if (!feedback) return;
     if (feedback.hinted || feedback.expected.size > 0) {
       const profile = lightsRef.current.getProfile();
@@ -166,7 +193,7 @@ export default function App() {
       }
     }
     if (feedback.done) lightsRef.current.clear();
-  }, [feedback, listenActive]);
+  }, [feedback, listenActive, gameActive]);
 
   useEffect(() => {
     try {
@@ -389,7 +416,23 @@ export default function App() {
     engineRef.current.seek(eventIndex);
   }, []);
 
+  const exitFallingLights = useCallback(() => {
+    fallingLightsRef.current.stop();
+    setAppMode("practice");
+  }, []);
+
+  const enterFallingLights = useCallback(() => {
+    playerRef.current.stop({ emitEnded: false });
+    setListenTransport("idle");
+    setListenEventIndex(null);
+    clearListenHeard();
+    fallingLightsRef.current.stop();
+    setAppMode("fallingLights");
+  }, [clearListenHeard]);
+
   const goHome = useCallback(() => {
+    fallingLightsRef.current.stop();
+    setAppMode("practice");
     playerRef.current.stop({ emitEnded: false });
     setListenTransport("idle");
     setListenEventIndex(null);
@@ -431,10 +474,13 @@ export default function App() {
           return;
         }
         const buffer = await res.arrayBuffer();
-        const fileName = sample.path.split("/").pop() ?? `${sample.id}.musicxml`;
-        const type = fileName.endsWith(".mxl")
+        const fileName =
+          decodeURIComponent(sample.path.split("/").pop() ?? "") ||
+          `${sample.id}.musicxml`;
+        const lower = fileName.toLowerCase();
+        const type = lower.endsWith(".mxl")
           ? "application/vnd.recordare.musicxml"
-          : "application/xml";
+          : "application/vnd.recordare.musicxml+xml";
         await onLoadFile(new File([buffer], fileName, { type }));
       } catch (err) {
         setMidiError(err instanceof Error ? err.message : String(err));
@@ -452,6 +498,15 @@ export default function App() {
 
   const keyStates = useMemo(() => {
     const map = new Map<number, KeyVisualState>();
+    if (gameActive) {
+      map.set(FALLING_LEFT_MIDI, "expected");
+      map.set(FALLING_RIGHT_MIDI, "expected");
+      for (const n of heard) {
+        if (n === FALLING_LEFT_MIDI || n === FALLING_RIGHT_MIDI) map.set(n, "correct");
+        else map.set(n, "heard");
+      }
+      return map;
+    }
     if (feedback && !listenActive) {
       for (const n of feedback.expected) {
         map.set(n, feedback.hinted ? "expected" : feedback.heldCorrect.has(n) ? "correct" : "expected");
@@ -464,7 +519,7 @@ export default function App() {
       else if (map.get(n) === "expected") map.set(n, "correct");
     }
     return map;
-  }, [feedback, heard, listenActive]);
+  }, [feedback, heard, listenActive, gameActive]);
 
   const onLightProfile = useCallback((profile: LightProfile) => {
     setLightProfile(profile);
@@ -480,11 +535,21 @@ export default function App() {
       }
     }
 
+    heardRef.current.add(midi);
+    setHeard(new Set(heardRef.current));
+
+    if (appModeRef.current === "fallingLights") {
+      fallingLightsRef.current.noteOn(midi);
+      window.setTimeout(() => {
+        heardRef.current.delete(midi);
+        setHeard(new Set(heardRef.current));
+      }, 120);
+      return;
+    }
+
     if (listenTransportRef.current === "idle") {
       engineRef.current.noteOn(midi);
     }
-    heardRef.current.add(midi);
-    setHeard(new Set(heardRef.current));
 
     const profile = lightsRef.current.getProfile();
     if (profile.mode === "noteOn") {
@@ -533,19 +598,31 @@ export default function App() {
         <div className="topbar-actions">
           <button
             type="button"
+            className={`btn${gameActive ? " game-active" : ""}`}
+            onClick={() => {
+              if (gameActive) exitFallingLights();
+              else enterFallingLights();
+            }}
+            title={gameActive ? "Leave Falling Lights" : "Play Falling Lights timing game"}
+          >
+            {gameActive ? "Leave game" : "Falling Lights"}
+          </button>
+          <button
+            type="button"
             className="btn"
             onClick={goHome}
             title="Browse scores"
-            disabled={!score}
+            disabled={!score || gameActive}
           >
             Library
           </button>
-          <label className="btn primary file-btn">
+          <label className={`btn primary file-btn${gameActive ? " disabled" : ""}`}>
             Load score
             <input
               type="file"
               accept=".musicxml,.xml,.mxl,application/vnd.recordare.musicxml+xml,application/xml,text/xml"
               hidden
+              disabled={gameActive}
               onChange={(e) => void onLoadFile(e.target.files?.[0] ?? null)}
             />
           </label>
@@ -591,7 +668,9 @@ export default function App() {
       )}
 
       <main className="stage">
-        {score ? (
+        {gameActive ? (
+          <FallingLightsGame engine={fallingLightsEngine} onExit={exitFallingLights} />
+        ) : score ? (
           <div className="score-shell">
             <div className="score-listen-bar" aria-label="Listen controls">
               <label className="field inline score-bpm">
@@ -642,6 +721,8 @@ export default function App() {
             <p>
               Drop a MusicXML or compressed <code>.mxl</code> file, pick a score from the library,
               connect your Williams piano over MIDI, and play — the cursor waits for the correct notes.
+              Or try <button type="button" className="linkish" onClick={enterFallingLights}>Falling Lights</button>{" "}
+              to train two-hand timing.
             </p>
             <div className="panel-row wrap" style={{ justifyContent: "center" }}>
               <label className="btn primary file-btn large">
@@ -653,6 +734,9 @@ export default function App() {
                   onChange={(e) => void onLoadFile(e.target.files?.[0] ?? null)}
                 />
               </label>
+              <button type="button" className="btn large" onClick={enterFallingLights}>
+                Falling Lights
+              </button>
             </div>
             <LibraryBrowser
               onSelect={(sample) => void onLoadSample(sample)}
@@ -667,13 +751,17 @@ export default function App() {
         className={`dock${dockPinned ? " dock-pinned" : ""}`}
       >
         <div className="dock-controls">
-          <p className="status">{feedback?.statusText ?? "Connect MIDI and load a score."}</p>
+          <p className="status">
+            {gameActive
+              ? "Falling Lights — play C3 (left) and C5 (right) on the beat."
+              : (feedback?.statusText ?? "Connect MIDI and load a score.")}
+          </p>
           <div className="dock-buttons">
             <button
               type="button"
               className={`btn ${listenPlaying ? "listening" : ""}`}
               onClick={togglePlayPause}
-              disabled={!score}
+              disabled={!score || gameActive}
               title={playPauseTitle}
             >
               {playPauseLabel}
@@ -695,24 +783,24 @@ export default function App() {
                 min={40}
                 max={200}
                 value={listenBpm}
-                disabled={!score || listenPlaying}
+                disabled={!score || listenPlaying || gameActive}
                 onChange={(e) => setListenBpm(Math.min(200, Math.max(40, Number(e.target.value) || 80)))}
               />
             </label>
-            <button type="button" className="btn" onClick={() => engineRef.current.reset()} disabled={!score || listenActive}>
+            <button type="button" className="btn" onClick={() => engineRef.current.reset()} disabled={!score || listenActive || gameActive}>
               Restart
             </button>
             <button
               type="button"
               className="btn"
               onClick={() => engineRef.current.showHint()}
-              disabled={!score || feedback?.done || listenActive}
+              disabled={!score || feedback?.done || listenActive || gameActive}
             >
               Show hint
             </button>
             <label className="field inline">
               <span>Hands</span>
-              <select value={hand} onChange={(e) => onHandChange(e.target.value as Hand)} disabled={listenActive}>
+              <select value={hand} onChange={(e) => onHandChange(e.target.value as Hand)} disabled={listenActive || gameActive}>
                 <option value="both">Both</option>
                 <option value="right">Right</option>
                 <option value="left">Left</option>

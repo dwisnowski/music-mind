@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
+import { fetchArabesqueLibrary } from "../score/arabesqueLibrary";
 import { fetchMuseTrainerLibrary } from "../score/museTrainerLibrary";
 import { SAMPLE_SCORES, type SampleScore } from "../score/samples";
 
@@ -7,20 +8,42 @@ interface LibraryBrowserProps {
   loadingId?: string | null;
 }
 
+type RemoteSource = "MuseTrainer" | "Arabesque";
+
+interface RemoteScore extends SampleScore {
+  source: RemoteSource;
+}
+
+function remoteSubtitle(sample: RemoteScore): string {
+  if (sample.source === "MuseTrainer") return "MuseTrainer";
+  return `${sample.composer} · Arabesque`;
+}
+
 export function LibraryBrowser({ onSelect, loadingId }: LibraryBrowserProps) {
-  const [remote, setRemote] = useState<SampleScore[] | null>(null);
-  const [error, setError] = useState<string | null>(null);
+  const [museTrainer, setMuseTrainer] = useState<SampleScore[] | null>(null);
+  const [museTrainerError, setMuseTrainerError] = useState<string | null>(null);
+  const [arabesque, setArabesque] = useState<SampleScore[] | null>(null);
+  const [arabesqueError, setArabesqueError] = useState<string | null>(null);
   const [query, setQuery] = useState("");
 
   useEffect(() => {
     let cancelled = false;
     void fetchMuseTrainerLibrary()
       .then((scores) => {
-        if (!cancelled) setRemote(scores);
+        if (!cancelled) setMuseTrainer(scores);
       })
       .catch((err: unknown) => {
         if (!cancelled) {
-          setError(err instanceof Error ? err.message : String(err));
+          setMuseTrainerError(err instanceof Error ? err.message : String(err));
+        }
+      });
+    void fetchArabesqueLibrary()
+      .then((scores) => {
+        if (!cancelled) setArabesque(scores);
+      })
+      .catch((err: unknown) => {
+        if (!cancelled) {
+          setArabesqueError(err instanceof Error ? err.message : String(err));
         }
       });
     return () => {
@@ -28,14 +51,34 @@ export function LibraryBrowser({ onSelect, loadingId }: LibraryBrowserProps) {
     };
   }, []);
 
+  const remote: RemoteScore[] | null = useMemo(() => {
+    if (!museTrainer && !arabesque) return null;
+    const merged: RemoteScore[] = [];
+    for (const score of museTrainer ?? []) {
+      merged.push({ ...score, source: "MuseTrainer" });
+    }
+    for (const score of arabesque ?? []) {
+      merged.push({ ...score, source: "Arabesque" });
+    }
+    merged.sort((a, b) => a.title.localeCompare(b.title, undefined, { sensitivity: "base" }));
+    return merged;
+  }, [museTrainer, arabesque]);
+
   const filtered = useMemo(() => {
     if (!remote) return [];
     const q = query.trim().toLowerCase();
     if (!q) return remote;
     return remote.filter(
-      (s) => s.title.toLowerCase().includes(q) || s.id.toLowerCase().includes(q),
+      (s) =>
+        s.title.toLowerCase().includes(q) ||
+        s.composer.toLowerCase().includes(q) ||
+        s.source.toLowerCase().includes(q) ||
+        s.id.toLowerCase().includes(q),
     );
   }, [remote, query]);
+
+  const loading = !museTrainer && !arabesque && !museTrainerError && !arabesqueError;
+  const statusErrors = [museTrainerError, arabesqueError].filter(Boolean) as string[];
 
   return (
     <div className="library-browser">
@@ -59,7 +102,7 @@ export function LibraryBrowser({ onSelect, loadingId }: LibraryBrowserProps) {
       </div>
 
       <div className="library-section">
-        <h3 className="library-heading">MuseTrainer library</h3>
+        <h3 className="library-heading">Remote library</h3>
         <p className="library-credit">
           Public-domain MusicXML from{" "}
           <a
@@ -68,11 +111,15 @@ export function LibraryBrowser({ onSelect, loadingId }: LibraryBrowserProps) {
             rel="noreferrer"
           >
             MuseTrainer
+          </a>{" "}
+          and{" "}
+          <a href="https://arabesque.app/" target="_blank" rel="noreferrer">
+            Arabesque
           </a>
           .
         </p>
         <label className="library-search">
-          <span className="sr-only">Search library</span>
+          <span className="sr-only">Search remote library</span>
           <input
             type="search"
             placeholder="Search scores…"
@@ -81,8 +128,10 @@ export function LibraryBrowser({ onSelect, loadingId }: LibraryBrowserProps) {
             disabled={!remote}
           />
         </label>
-        {error ? <p className="library-status error">{error}</p> : null}
-        {!error && !remote ? <p className="library-status">Loading catalog…</p> : null}
+        {statusErrors.length > 0 ? (
+          <p className="library-status error">{statusErrors.join(" ")}</p>
+        ) : null}
+        {loading ? <p className="library-status">Loading catalog…</p> : null}
         {remote ? (
           <ul className="sample-list library-scroll">
             {filtered.length === 0 ? (
@@ -98,7 +147,7 @@ export function LibraryBrowser({ onSelect, loadingId }: LibraryBrowserProps) {
                   >
                     <span className="sample-title">{sample.title}</span>
                     <span className="sample-composer">
-                      {loadingId === sample.id ? "Loading…" : sample.composer}
+                      {loadingId === sample.id ? "Loading…" : remoteSubtitle(sample)}
                     </span>
                   </button>
                 </li>

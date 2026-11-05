@@ -24,6 +24,7 @@ MuseTrainer publishes a GitHub Pages catalog (`musetrainer.github.io/library`) a
 - Catalog titles and file set track MuseTrainer’s README; if they change format, the parser may need a tweak.
 - MusicXML quality still varies by source edition (same as ADR 0001); bad remotes fail at parse/load.
 - Attribution to MuseTrainer belongs in the UI and docs; licensing remains their public-domain redistribution.
+- A second remote peer (Arabesque) is documented in [ADR 0007](0007-arabesque-remote-library.md).
 
 ## Code anchors
 

@@ -6,8 +6,9 @@ Practice piano with interactive MusicXML, live MIDI feedback, and optional key l
 
 ## Features
 
-- Load MusicXML / `.mxl` sheet music (local file or browse the remote [MuseTrainer](https://musetrainer.github.io/library/) public-domain library)
+- Load MusicXML / `.mxl` sheet music (local file or browse remote public-domain libraries: [MuseTrainer](https://musetrainer.github.io/library/), [Arabesque](https://arabesque.app/))
 - Simply Piano–style **Feedback** mode: wait-for-correct-notes, vertical cursor, color feedback
+- **Falling Lights** mini-game: timed L/R targets on C3 / C5 (MIDI) for two-hand timing
 - On-screen 88-key hint keyboard
 - Web MIDI on desktop (Chrome / Edge)
 - iPad via Capacitor + CoreMIDI (Bluetooth MIDI pairing)
@@ -20,7 +21,7 @@ make install
 make run
 ```
 
-Then open Chrome at [http://localhost:5173](http://localhost:5173), allow MIDI, pair the piano (macOS: Audio MIDI Setup → Bluetooth), and load a score — **Quick start** samples (Für Elise, Clair de Lune, Gymnopédie No. 1, Twinkle) ship with the app; the empty-state **MuseTrainer library** browser loads the full public-domain catalog over the network without vendoring that repo.
+Then open Chrome at [http://localhost:5173](http://localhost:5173), allow MIDI, pair the piano (macOS: Audio MIDI Setup → Bluetooth), and load a score — **Quick start** samples (Für Elise, Clair de Lune, Gymnopédie No. 1, Twinkle) ship with the app; the empty-state library browser loads **MuseTrainer** and **Arabesque** public-domain catalogs over the network without vendoring those repos.
 
 | Target | What it does |
 | --- | --- |

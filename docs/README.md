@@ -9,3 +9,5 @@ Architecture decisions and project notes for Music Mind.
 - [0003 – Listen play/pause from practice](adr/0003-listen-play-pause-from-practice.md) — Dual cursors; Play/Pause remaining from practice index; score click seeks Listen or practice
 - [0004 – Piano edge keys as app controls](adr/0004-piano-control-keys.md) — Toggleable control map on extreme keys; practice reset/step; Listen play-pause / next-10 / stop
 - [0005 – MuseTrainer remote library](adr/0005-musetrainer-remote-library.md) — Browse/load MuseTrainer public-domain `.mxl` over the network (README catalog + GitHub Pages); keep bundled Quick start samples
+- [0006 – Timed mini-games / Falling Lights](adr/0006-timed-falling-lights.md) — Separate timed lifecycle from Feedback; performance clock + MIDI timestamp offset; Falling Lights L/R fixed-key stage
+- [0007 – Arabesque remote library](adr/0007-arabesque-remote-library.md) — Second remote catalog via Arabesque `scores.json` + `arabesque.app/scores/`; merged with MuseTrainer in one Remote library UI
