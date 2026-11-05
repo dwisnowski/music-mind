@@ -10,6 +10,11 @@ export interface ScorePlayerOptions {
   hand?: Hand;
   /** Inclusive start into score.events (remaining from this index). */
   startEventIndex?: number;
+  /**
+   * When set, play at most this many events from `startEventIndex`
+   * (exclusive end = start + maxEvents).
+   */
+  maxEvents?: number;
   onNote?: ListenNoteHandler;
   /** Fired when a score event (chord/onset) begins, for score cursor follow. */
   onEvent?: ListenEventHandler;
@@ -40,6 +45,10 @@ export class ScorePlayer {
     const bpm = options.bpm ?? 80;
     const hand = options.hand ?? "both";
     const startEventIndex = Math.max(0, options.startEventIndex ?? 0);
+    const endEventIndex =
+      options.maxEvents != null
+        ? startEventIndex + Math.max(0, Math.trunc(options.maxEvents))
+        : Number.POSITIVE_INFINITY;
     this.onNote = options.onNote ?? null;
     this.onEvent = options.onEvent ?? null;
     this.onEnded = options.onEnded ?? null;
@@ -65,6 +74,7 @@ export class ScorePlayer {
 
     for (const event of score.events) {
       if (event.index < startEventIndex) continue;
+      if (event.index >= endEventIndex) break;
 
       const filtered = filterEventByHand(event, hand);
       if (filtered.notes.length === 0) continue;

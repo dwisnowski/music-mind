@@ -16,8 +16,24 @@ import { ScoreView, type ListenTransport } from "./ui/ScoreView";
 import { PianoKeyboard, type KeyVisualState } from "./ui/PianoKeyboard";
 import { ConnectPanel } from "./ui/ConnectPanel";
 import { LightsPanel } from "./ui/LightsPanel";
+import {
+  ControlKeyHandler,
+  isReservedControlMidi,
+  type ControlAction,
+} from "./input/controlKeys";
 
 const DOCK_PIN_KEY = "music-mind-dock-pinned";
+const PIANO_CONTROLS_KEY = "mm.pianoControls";
+
+function loadPianoControlsEnabled(): boolean {
+  try {
+    const raw = localStorage.getItem(PIANO_CONTROLS_KEY);
+    if (raw === null) return true;
+    return raw === "1";
+  } catch {
+    return true;
+  }
+}
 
 export default function App() {
   const engineRef = useRef(new FeedbackEngine());
@@ -30,6 +46,9 @@ export default function App() {
   const listenTransportRef = useRef<ListenTransport>("idle");
   const feedbackRef = useRef<FeedbackState | null>(null);
   const listenEventIndexRef = useRef<number | null>(null);
+  const pianoControlsEnabledRef = useRef(loadPianoControlsEnabled());
+  const controlKeysRef = useRef(new ControlKeyHandler());
+  const dispatchControlRef = useRef<(action: ControlAction) => void>(() => {});
 
   const [adapter, setAdapter] = useState<MidiAdapter | null>(null);
   const [inputs, setInputs] = useState<MidiDeviceInfo[]>([]);
@@ -52,6 +71,7 @@ export default function App() {
       return false;
     }
   });
+  const [pianoControlsEnabled, setPianoControlsEnabled] = useState(loadPianoControlsEnabled);
   const [dockSpacerPx, setDockSpacerPx] = useState(0);
 
   const listenActive = listenTransport !== "idle";
@@ -68,6 +88,11 @@ export default function App() {
   useEffect(() => {
     listenEventIndexRef.current = listenEventIndex;
   }, [listenEventIndex]);
+
+  useEffect(() => {
+    pianoControlsEnabledRef.current = pianoControlsEnabled;
+    if (!pianoControlsEnabled) controlKeysRef.current.clear();
+  }, [pianoControlsEnabled]);
 
   useEffect(() => {
     const player = playerRef.current;
@@ -91,12 +116,22 @@ export default function App() {
         const msg = parseMidiMessage(data);
         if (!msg) return;
         if (msg.type === "noteon") {
+          if (pianoControlsEnabledRef.current) {
+            const result = controlKeysRef.current.handleNoteOn(msg.note);
+            if (result.consumed) {
+              if (result.action) dispatchControlRef.current(result.action);
+              return;
+            }
+          }
           heardRef.current.add(msg.note);
           setHeard(new Set(heardRef.current));
           if (listenTransportRef.current === "idle") {
             engineRef.current.noteOn(msg.note);
           }
         } else {
+          if (pianoControlsEnabledRef.current && isReservedControlMidi(msg.note)) {
+            return;
+          }
           heardRef.current.delete(msg.note);
           setHeard(new Set(heardRef.current));
           if (listenTransportRef.current === "idle") {
@@ -130,6 +165,14 @@ export default function App() {
       /* ignore */
     }
   }, [dockPinned]);
+
+  useEffect(() => {
+    try {
+      localStorage.setItem(PIANO_CONTROLS_KEY, pianoControlsEnabled ? "1" : "0");
+    } catch {
+      /* ignore */
+    }
+  }, [pianoControlsEnabled]);
 
   useEffect(() => {
     if (!dockPinned) {
@@ -203,8 +246,9 @@ export default function App() {
   }, [clearListenHeard]);
 
   const playListenFrom = useCallback(
-    async (startEventIndex: number) => {
+    async (startEventIndex: number, options?: { maxEvents?: number }) => {
       if (!score) return;
+      const maxEvents = options?.maxEvents;
       lightsRef.current.clear();
       heardRef.current.clear();
       setHeard(new Set());
@@ -216,6 +260,7 @@ export default function App() {
           bpm: listenBpm,
           hand: "both",
           startEventIndex,
+          maxEvents,
           onEvent: (eventIndex) => setListenEventIndex(eventIndex),
           onNote: (midi, on, staffIndex) => {
             if (on) heardRef.current.add(midi);
@@ -228,6 +273,13 @@ export default function App() {
             lightsRef.current.lightNote(midi, on, channel);
           },
           onEnded: () => {
+            if (maxEvents != null) {
+              setListenTransport("paused");
+              heardRef.current.clear();
+              setHeard(new Set());
+              lightsRef.current.clear();
+              return;
+            }
             setListenTransport("idle");
             setListenEventIndex(null);
             heardRef.current.clear();
@@ -258,6 +310,52 @@ export default function App() {
     const start = feedbackRef.current?.eventIndex ?? 0;
     void playListenFrom(start);
   }, [score, pauseListen, playListenFrom]);
+
+  const playNextEvents = useCallback(
+    (n: number) => {
+      if (!score) return;
+      let start: number;
+      if (listenTransportRef.current === "playing") {
+        start = listenEventIndexRef.current ?? feedbackRef.current?.eventIndex ?? 0;
+        playerRef.current.stop({ emitEnded: false });
+      } else if (
+        listenTransportRef.current === "paused" &&
+        listenEventIndexRef.current != null
+      ) {
+        start = listenEventIndexRef.current;
+      } else {
+        start = feedbackRef.current?.eventIndex ?? 0;
+      }
+      void playListenFrom(start, { maxEvents: n });
+    },
+    [score, playListenFrom],
+  );
+
+  useEffect(() => {
+    dispatchControlRef.current = (action: ControlAction) => {
+      switch (action) {
+        case "reset":
+          if (listenTransportRef.current !== "idle") return;
+          engineRef.current.reset();
+          break;
+        case "stepBack":
+          engineRef.current.stepBy(-1);
+          break;
+        case "stepForward":
+          engineRef.current.stepBy(1);
+          break;
+        case "playPause":
+          togglePlayPause();
+          break;
+        case "next10":
+          playNextEvents(10);
+          break;
+        case "stop":
+          stopListen();
+          break;
+      }
+    };
+  }, [togglePlayPause, playNextEvents, stopListen]);
 
   const onSeekListen = useCallback(
     (eventIndex: number) => {
@@ -346,6 +444,14 @@ export default function App() {
   }, []);
 
   const onPianoKeyClick = useCallback((midi: number) => {
+    if (pianoControlsEnabledRef.current) {
+      const result = controlKeysRef.current.handleNoteOn(midi);
+      if (result.consumed) {
+        if (result.action) dispatchControlRef.current(result.action);
+        return;
+      }
+    }
+
     if (listenTransportRef.current === "idle") {
       engineRef.current.noteOn(midi);
     }
@@ -591,6 +697,17 @@ export default function App() {
                 <option value="left">Left</option>
               </select>
             </label>
+            <label
+              className="field inline"
+              title="Use extreme piano keys as app controls (A0/B0/C1 and A7/B7/C8)"
+            >
+              <span>Piano controls</span>
+              <input
+                type="checkbox"
+                checked={pianoControlsEnabled}
+                onChange={(e) => setPianoControlsEnabled(e.target.checked)}
+              />
+            </label>
             <button
               type="button"
               className={`btn${dockPinned ? " pinned" : ""}`}
@@ -605,7 +722,11 @@ export default function App() {
             </button>
           </div>
         </div>
-        <PianoKeyboard states={keyStates} onKeyClick={onPianoKeyClick} />
+        <PianoKeyboard
+          states={keyStates}
+          onKeyClick={onPianoKeyClick}
+          controlsEnabled={pianoControlsEnabled}
+        />
       </section>
 
       <footer className="wiz-footer">

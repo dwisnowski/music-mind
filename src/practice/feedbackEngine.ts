@@ -73,6 +73,31 @@ export class FeedbackEngine {
     this.emit();
   }
 
+  /**
+   * Nudge practice cursor by one non-empty event in `delta` direction.
+   * Clamps at the ends; no-op if no candidate exists that way.
+   */
+  stepBy(delta: -1 | 1) {
+    if (!this.score || this.score.events.length === 0) return;
+    const len = this.score.events.length;
+    let i = this.eventIndex + delta;
+
+    while (i >= 0 && i < len) {
+      const raw = this.score.events[i];
+      const filtered = filterEventByHand(raw, this.hand);
+      if (filtered.notes.length > 0) {
+        this.eventIndex = i;
+        this.heldCorrect.clear();
+        this.wrongFlash.clear();
+        this.hinted = false;
+        this.wrongAttempts = 0;
+        this.emit();
+        return;
+      }
+      i += delta;
+    }
+  }
+
   getState(): FeedbackState {
     const event = this.currentEvent();
     const expected = event ? pitchClassSet(event.notes) : new Set<number>();

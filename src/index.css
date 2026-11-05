@@ -457,6 +457,13 @@ a {
   padding: 0.35rem 0.45rem;
 }
 
+.dock .field input[type="checkbox"] {
+  width: 1.05rem;
+  height: 1.05rem;
+  accent-color: var(--accent);
+  cursor: pointer;
+}
+
 .dock .btn.listening {
   background: rgba(201, 133, 18, 0.35);
   border-color: rgba(201, 133, 18, 0.7);
@@ -540,6 +547,16 @@ a {
 
 .key.black.state-heard {
   background: #5b6670 !important;
+}
+
+.key.key-control.white {
+  background: linear-gradient(180deg, #e8f0ea 0%, #c5d4c8 100%);
+  box-shadow: inset 0 -3px 0 #5a7a62;
+}
+
+.key.key-control.black {
+  background: linear-gradient(180deg, #3d4a40 0%, #1a221c 100%);
+  box-shadow: inset 0 -2px 0 #7a9a82;
 }
 
 .wiz-footer {
