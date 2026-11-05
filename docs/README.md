@@ -11,3 +11,4 @@ Architecture decisions and project notes for Music Mind.
 - [0005 – MuseTrainer remote library](adr/0005-musetrainer-remote-library.md) — Browse/load MuseTrainer public-domain `.mxl` over the network (README catalog + GitHub Pages); keep bundled Quick start samples
 - [0006 – Timed mini-games / Falling Lights](adr/0006-timed-falling-lights.md) — Separate timed lifecycle from Feedback; performance clock + MIDI timestamp offset; Falling Lights L/R fixed-key stage
 - [0007 – Arabesque remote library](adr/0007-arabesque-remote-library.md) — Second remote catalog via Arabesque `scores.json` + `arabesque.app/scores/`; merged with MuseTrainer in one Remote library UI
+- [0008 – Echo Ghost](adr/0008-echo-ghost.md) — Listen→echo mini-game; generated C4–B4 phrases; pitch-order grading (extends 0006)

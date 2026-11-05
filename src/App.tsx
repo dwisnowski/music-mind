@@ -29,11 +29,17 @@ import {
   FALLING_LEFT_MIDI,
   FALLING_RIGHT_MIDI,
 } from "./games/fallingLights";
+import {
+  EchoGhostEngine,
+  EchoGhostGame,
+  type EchoGhostSnapshot,
+} from "./games/echoGhost";
 
 const DOCK_PIN_KEY = "music-mind-dock-pinned";
 const PIANO_CONTROLS_KEY = "mm.pianoControls";
 
-type AppMode = "practice" | "fallingLights";
+type AppMode = "practice" | "fallingLights" | "echoGhost";
+type GameId = "fallingLights" | "echoGhost";
 
 function loadPianoControlsEnabled(): boolean {
   try {
@@ -49,6 +55,8 @@ export default function App() {
   const engineRef = useRef(new FeedbackEngine());
   const [fallingLightsEngine] = useState(() => new FallingLightsEngine());
   const fallingLightsRef = useRef(fallingLightsEngine);
+  const [echoGhostEngine] = useState(() => new EchoGhostEngine());
+  const echoGhostRef = useRef(echoGhostEngine);
   const lightsRef = useRef(new WilliamsLights());
   const playerRef = useRef(new ScorePlayer());
   const adapterRef = useRef<MidiAdapter | null>(null);
@@ -90,6 +98,8 @@ export default function App() {
   const [dockSpacerPx, setDockSpacerPx] = useState(0);
   const [loadingSampleId, setLoadingSampleId] = useState<string | null>(null);
   const [appMode, setAppMode] = useState<AppMode>("practice");
+  const [gamesMenuOpen, setGamesMenuOpen] = useState(false);
+  const [echoSnap, setEchoSnap] = useState<EchoGhostSnapshot>(() => echoGhostEngine.snapshot());
 
   const closePianoControlsHelp = useCallback(() => {
     setPianoControlsHelpOpen(false);
@@ -98,7 +108,7 @@ export default function App() {
 
   const listenActive = listenTransport !== "idle";
   const listenPlaying = listenTransport === "playing";
-  const gameActive = appMode === "fallingLights";
+  const gameActive = appMode === "fallingLights" || appMode === "echoGhost";
 
   useEffect(() => {
     appModeRef.current = appMode;
@@ -109,9 +119,26 @@ export default function App() {
   }, [listenTransport]);
 
   useEffect(() => {
-    const game = fallingLightsRef.current;
-    return () => game.stop();
+    const falling = fallingLightsRef.current;
+    const echo = echoGhostRef.current;
+    return () => {
+      falling.stop();
+      echo.stop();
+    };
   }, []);
+
+  useEffect(() => echoGhostEngine.subscribe(setEchoSnap), [echoGhostEngine]);
+
+  useEffect(() => {
+    if (!gamesMenuOpen) return;
+    const onDoc = (e: MouseEvent) => {
+      const t = e.target as HTMLElement | null;
+      if (t?.closest?.(".games-menu")) return;
+      setGamesMenuOpen(false);
+    };
+    document.addEventListener("mousedown", onDoc);
+    return () => document.removeEventListener("mousedown", onDoc);
+  }, [gamesMenuOpen]);
 
   useEffect(() => {
     feedbackRef.current = feedback;
@@ -161,6 +188,10 @@ export default function App() {
             fallingLightsRef.current.noteOn(msg.note, timestamp);
             return;
           }
+          if (appModeRef.current === "echoGhost") {
+            echoGhostRef.current.noteOn(msg.note);
+            return;
+          }
           if (listenTransportRef.current === "idle") {
             engineRef.current.noteOn(msg.note);
           }
@@ -170,7 +201,7 @@ export default function App() {
           }
           heardRef.current.delete(msg.note);
           setHeard(new Set(heardRef.current));
-          if (appModeRef.current === "fallingLights") return;
+          if (appModeRef.current === "fallingLights" || appModeRef.current === "echoGhost") return;
           if (listenTransportRef.current === "idle") {
             engineRef.current.noteOff(msg.note);
           }
@@ -416,22 +447,31 @@ export default function App() {
     engineRef.current.seek(eventIndex);
   }, []);
 
-  const exitFallingLights = useCallback(() => {
+  const exitGame = useCallback(() => {
     fallingLightsRef.current.stop();
+    echoGhostRef.current.stop();
+    setGamesMenuOpen(false);
     setAppMode("practice");
   }, []);
 
-  const enterFallingLights = useCallback(() => {
-    playerRef.current.stop({ emitEnded: false });
-    setListenTransport("idle");
-    setListenEventIndex(null);
-    clearListenHeard();
-    fallingLightsRef.current.stop();
-    setAppMode("fallingLights");
-  }, [clearListenHeard]);
+  const enterGame = useCallback(
+    (game: GameId) => {
+      playerRef.current.stop({ emitEnded: false });
+      setListenTransport("idle");
+      setListenEventIndex(null);
+      clearListenHeard();
+      fallingLightsRef.current.stop();
+      echoGhostRef.current.stop();
+      setGamesMenuOpen(false);
+      setAppMode(game);
+    },
+    [clearListenHeard],
+  );
 
   const goHome = useCallback(() => {
     fallingLightsRef.current.stop();
+    echoGhostRef.current.stop();
+    setGamesMenuOpen(false);
     setAppMode("practice");
     playerRef.current.stop({ emitEnded: false });
     setListenTransport("idle");
@@ -498,11 +538,22 @@ export default function App() {
 
   const keyStates = useMemo(() => {
     const map = new Map<number, KeyVisualState>();
-    if (gameActive) {
+    if (appMode === "fallingLights") {
       map.set(FALLING_LEFT_MIDI, "expected");
       map.set(FALLING_RIGHT_MIDI, "expected");
       for (const n of heard) {
         if (n === FALLING_LEFT_MIDI || n === FALLING_RIGHT_MIDI) map.set(n, "correct");
+        else map.set(n, "heard");
+      }
+      return map;
+    }
+    if (appMode === "echoGhost") {
+      // Ghost the sounding note while listening only — do not reveal targets during echo.
+      if (echoSnap.phase === "listening" && echoSnap.ghostMidi != null) {
+        map.set(echoSnap.ghostMidi, "expected");
+      }
+      for (const n of heard) {
+        if (map.get(n) === "expected") map.set(n, "correct");
         else map.set(n, "heard");
       }
       return map;
@@ -519,7 +570,7 @@ export default function App() {
       else if (map.get(n) === "expected") map.set(n, "correct");
     }
     return map;
-  }, [feedback, heard, listenActive, gameActive]);
+  }, [feedback, heard, listenActive, appMode, echoSnap]);
 
   const onLightProfile = useCallback((profile: LightProfile) => {
     setLightProfile(profile);
@@ -540,6 +591,15 @@ export default function App() {
 
     if (appModeRef.current === "fallingLights") {
       fallingLightsRef.current.noteOn(midi);
+      window.setTimeout(() => {
+        heardRef.current.delete(midi);
+        setHeard(new Set(heardRef.current));
+      }, 120);
+      return;
+    }
+
+    if (appModeRef.current === "echoGhost") {
+      echoGhostRef.current.noteOn(midi);
       window.setTimeout(() => {
         heardRef.current.delete(midi);
         setHeard(new Set(heardRef.current));
@@ -596,17 +656,49 @@ export default function App() {
           </button>
         </h1>
         <div className="topbar-actions">
-          <button
-            type="button"
-            className={`btn${gameActive ? " game-active" : ""}`}
-            onClick={() => {
-              if (gameActive) exitFallingLights();
-              else enterFallingLights();
-            }}
-            title={gameActive ? "Leave Falling Lights" : "Play Falling Lights timing game"}
-          >
-            {gameActive ? "Leave game" : "Falling Lights"}
-          </button>
+          {gameActive ? (
+            <button
+              type="button"
+              className="btn game-active"
+              onClick={exitGame}
+              title="Leave game and return to practice"
+            >
+              Leave game
+            </button>
+          ) : (
+            <div className="games-menu">
+              <button
+                type="button"
+                className="btn"
+                onClick={() => setGamesMenuOpen((v) => !v)}
+                aria-expanded={gamesMenuOpen}
+                aria-haspopup="menu"
+                title="Open mini-games"
+              >
+                Games
+              </button>
+              {gamesMenuOpen ? (
+                <div className="games-menu-panel" role="menu">
+                  <button
+                    type="button"
+                    className="btn"
+                    role="menuitem"
+                    onClick={() => enterGame("fallingLights")}
+                  >
+                    Falling Lights
+                  </button>
+                  <button
+                    type="button"
+                    className="btn"
+                    role="menuitem"
+                    onClick={() => enterGame("echoGhost")}
+                  >
+                    Echo Ghost
+                  </button>
+                </div>
+              ) : null}
+            </div>
+          )}
           <button
             type="button"
             className="btn"
@@ -668,8 +760,10 @@ export default function App() {
       )}
 
       <main className="stage">
-        {gameActive ? (
-          <FallingLightsGame engine={fallingLightsEngine} onExit={exitFallingLights} />
+        {appMode === "fallingLights" ? (
+          <FallingLightsGame engine={fallingLightsEngine} onExit={exitGame} />
+        ) : appMode === "echoGhost" ? (
+          <EchoGhostGame engine={echoGhostEngine} onExit={exitGame} />
         ) : score ? (
           <div className="score-shell">
             <div className="score-listen-bar" aria-label="Listen controls">
@@ -721,8 +815,15 @@ export default function App() {
             <p>
               Drop a MusicXML or compressed <code>.mxl</code> file, pick a score from the library,
               connect your Williams piano over MIDI, and play — the cursor waits for the correct notes.
-              Or try <button type="button" className="linkish" onClick={enterFallingLights}>Falling Lights</button>{" "}
-              to train two-hand timing.
+              Or try a mini-game:{" "}
+              <button type="button" className="linkish" onClick={() => enterGame("fallingLights")}>
+                Falling Lights
+              </button>{" "}
+              (timing) or{" "}
+              <button type="button" className="linkish" onClick={() => enterGame("echoGhost")}>
+                Echo Ghost
+              </button>{" "}
+              (ear echo).
             </p>
             <div className="panel-row wrap" style={{ justifyContent: "center" }}>
               <label className="btn primary file-btn large">
@@ -734,8 +835,11 @@ export default function App() {
                   onChange={(e) => void onLoadFile(e.target.files?.[0] ?? null)}
                 />
               </label>
-              <button type="button" className="btn large" onClick={enterFallingLights}>
+              <button type="button" className="btn large" onClick={() => enterGame("fallingLights")}>
                 Falling Lights
+              </button>
+              <button type="button" className="btn large" onClick={() => enterGame("echoGhost")}>
+                Echo Ghost
               </button>
             </div>
             <LibraryBrowser
@@ -752,9 +856,11 @@ export default function App() {
       >
         <div className="dock-controls">
           <p className="status">
-            {gameActive
+            {appMode === "fallingLights"
               ? "Falling Lights — play C3 (left) and C5 (right) on the beat."
-              : (feedback?.statusText ?? "Connect MIDI and load a score.")}
+              : appMode === "echoGhost"
+                ? "Echo Ghost — listen, then replay the pitches in order (C4–B4)."
+                : (feedback?.statusText ?? "Connect MIDI and load a score.")}
           </p>
           <div className="dock-buttons">
             <button

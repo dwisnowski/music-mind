@@ -21,7 +21,7 @@ Accepted
 
 - Extends ADR 0001 without replacing Feedback; Listen and piano control keys remain available outside the game (controls still intercepted first when enabled).
 - On-screen keyboard can click home keys for practice without MIDI; click timing uses `performance.now()` (no MIDI timestamp).
-- Later games (Beat Dodger, Chord Crush, Sight-scroll, Echo Ghost) may reuse the clock / judgment / score helpers; they are out of scope for this decision.
+- Later games (Beat Dodger, Chord Crush, Sight-scroll) may reuse the clock / judgment / score helpers; they are out of scope for this decision. Echo Ghost is specified in [ADR 0008](0008-echo-ghost.md).
 - Bundle size grows with the stage UI; keep game modules importable from a dedicated entry path if splitting becomes necessary.
 
 ## Code anchors
