@@ -90,13 +90,6 @@ public class CoreMidiPlugin: CAPPlugin, CAPBridgedPlugin {
             connectedDestination = MIDIGetDestination(0)
         }
 
-        NotificationCenter.default.addObserver(
-            self,
-            selector: #selector(midiNetworkChanged),
-            name: Notification.Name(rawValue: String(kMIDIObjectAddRemoveNotification)),
-            object: nil
-        )
-
         call.resolve()
     }
 
@@ -151,10 +144,6 @@ public class CoreMidiPlugin: CAPPlugin, CAPBridgedPlugin {
 
     @objc private func dismissBluetooth() {
         self.bridge?.viewController?.dismiss(animated: true)
-    }
-
-    @objc private func midiNetworkChanged() {
-        // no-op; JS can refresh device lists
     }
 
     private func ensureClient() {

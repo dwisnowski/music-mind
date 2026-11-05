@@ -392,6 +392,26 @@ a {
   padding: 0.75rem 1rem 1rem;
 }
 
+.dock.dock-pinned {
+  position: fixed;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  z-index: 30;
+  padding-bottom: calc(1rem + env(safe-area-inset-bottom, 0px));
+  box-shadow: 0 -12px 40px rgba(28, 20, 16, 0.28);
+}
+
+.dock-spacer {
+  flex-shrink: 0;
+  pointer-events: none;
+}
+
+.dock .btn.pinned {
+  background: rgba(201, 133, 18, 0.35);
+  border-color: rgba(201, 133, 18, 0.7);
+}
+
 .dock-controls {
   display: flex;
   flex-wrap: wrap;

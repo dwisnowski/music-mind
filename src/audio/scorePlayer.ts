@@ -1,13 +1,15 @@
 import type { Hand, LoadedScore } from "../score/types";
 import { filterEventByHand } from "../score/types";
 
-export type ListenNoteHandler = (midi: number, on: boolean) => void;
+export type ListenNoteHandler = (midi: number, on: boolean, staffIndex: number) => void;
 export type ListenEventHandler = (eventIndex: number) => void;
 
 export interface ScorePlayerOptions {
   /** Quarter-note BPM. Default 80. */
   bpm?: number;
   hand?: Hand;
+  /** Inclusive start into score.events (remaining from this index). */
+  startEventIndex?: number;
   onNote?: ListenNoteHandler;
   /** Fired when a score event (chord/onset) begins, for score cursor follow. */
   onEvent?: ListenEventHandler;
@@ -15,7 +17,7 @@ export interface ScorePlayerOptions {
 }
 
 /**
- * Plays a LoadedScore timeline from the start via Web Audio.
+ * Plays a LoadedScore timeline via Web Audio.
  * Independent of practice cursor / FeedbackEngine position.
  */
 export class ScorePlayer {
@@ -37,6 +39,7 @@ export class ScorePlayer {
 
     const bpm = options.bpm ?? 80;
     const hand = options.hand ?? "both";
+    const startEventIndex = Math.max(0, options.startEventIndex ?? 0);
     this.onNote = options.onNote ?? null;
     this.onEvent = options.onEvent ?? null;
     this.onEnded = options.onEnded ?? null;
@@ -53,13 +56,20 @@ export class ScorePlayer {
 
     const secPerQuarter = 60 / bpm;
     const startAt = ctx.currentTime + 0.06;
+    const t0 = score.events[startEventIndex]?.timestamp ?? 0;
     let lastEnd = startAt;
+    let scheduledAny = false;
+
+    // Place Listen cursor immediately at the start event.
+    this.onEvent?.(Math.min(startEventIndex, Math.max(0, score.events.length - 1)));
 
     for (const event of score.events) {
+      if (event.index < startEventIndex) continue;
+
       const filtered = filterEventByHand(event, hand);
       if (filtered.notes.length === 0) continue;
 
-      const when = startAt + event.timestamp * secPerQuarter;
+      const when = startAt + (event.timestamp - t0) * secPerQuarter;
       const eventDelay = Math.max(0, (when - ctx.currentTime) * 1000);
       const eventIndex = event.index;
       this.noteOffTimers.push(
@@ -68,12 +78,21 @@ export class ScorePlayer {
 
       for (const note of filtered.notes) {
         const dur = Math.max(0.08, note.duration * secPerQuarter);
-        this.scheduleNote(ctx, master, note.midi, when, dur);
+        this.scheduleNote(ctx, master, note.midi, note.staffIndex, when, dur);
         lastEnd = Math.max(lastEnd, when + dur);
+        scheduledAny = true;
       }
     }
 
     this.playing = true;
+    if (!scheduledAny) {
+      this.playing = false;
+      this.onEnded?.();
+      void this.ctx.close();
+      this.ctx = null;
+      return;
+    }
+
     const remainingMs = Math.max(0, (lastEnd - ctx.currentTime) * 1000) + 80;
     this.endTimer = window.setTimeout(() => {
       this.playing = false;
@@ -122,6 +141,7 @@ export class ScorePlayer {
     ctx: AudioContext,
     master: GainNode,
     midi: number,
+    staffIndex: number,
     when: number,
     durationSec: number,
   ) {
@@ -147,8 +167,8 @@ export class ScorePlayer {
     const onDelay = Math.max(0, (when - ctx.currentTime) * 1000);
     const offDelay = Math.max(0, (when + durationSec - ctx.currentTime) * 1000);
     this.noteOffTimers.push(
-      window.setTimeout(() => this.onNote?.(midi, true), onDelay),
-      window.setTimeout(() => this.onNote?.(midi, false), offDelay),
+      window.setTimeout(() => this.onNote?.(midi, true, staffIndex), onDelay),
+      window.setTimeout(() => this.onNote?.(midi, false, staffIndex), offDelay),
     );
   }
 }

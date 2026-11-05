@@ -66,4 +66,4 @@ Stock Safari/Chrome on iPad cannot use MIDI — use this app (or MIDIWeb Browser
 
 ## Williams key lights
 
-The LED protocol is undocumented. Settings → Key lights → sweep channels 1–16 while watching the LEDs (consider Local Off so outbound notes do not double-trigger sound). Working channel is saved in `localStorage`.
+The LED protocol is undocumented. Settings → Key lights → sweep channels 1–16 while watching the LEDs (consider Local Off so outbound notes do not double-trigger sound). Practice channel plus separate **treble** and **bass** Listen channels are saved in `localStorage` (channel ≈ LED color). Listen lights treble/bass staff notes on those two channels; tapping the on-screen keyboard pulses one channel then cycles 0–15 for the next tap.

@@ -54,6 +54,25 @@ export class FeedbackEngine {
     this.emit();
   }
 
+  /** Jump practice cursor to an event index without rewriting past results. */
+  seek(eventIndex: number) {
+    if (!this.score) return;
+    const max = this.score.events.length;
+    this.eventIndex = Math.min(max, Math.max(0, Math.trunc(eventIndex)));
+    this.heldCorrect.clear();
+    this.wrongFlash.clear();
+    this.hinted = false;
+    this.wrongAttempts = 0;
+
+    while (this.eventIndex < this.score.events.length) {
+      const next = this.currentEvent();
+      if (next && next.notes.length > 0) break;
+      this.eventIndex += 1;
+    }
+
+    this.emit();
+  }
+
   getState(): FeedbackState {
     const event = this.currentEvent();
     const expected = event ? pitchClassSet(event.notes) : new Set<number>();

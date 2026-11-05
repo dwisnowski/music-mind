@@ -7,6 +7,25 @@ interface LightsPanelProps {
   onProbeAll: () => void;
 }
 
+function channelInput(
+  label: string,
+  value: number,
+  onChannel: (channel: number) => void,
+) {
+  return (
+    <label className="field">
+      <span>{label}</span>
+      <input
+        type="number"
+        min={1}
+        max={16}
+        value={value + 1}
+        onChange={(e) => onChannel(Math.min(15, Math.max(0, Number(e.target.value) - 1)))}
+      />
+    </label>
+  );
+}
+
 export function LightsPanel({ profile, onChange, onProbeChannel, onProbeAll }: LightsPanelProps) {
   return (
     <div className="panel lights-panel">
@@ -16,7 +35,8 @@ export function LightsPanel({ profile, onChange, onProbeChannel, onProbeAll }: L
       </div>
       <p className="muted small">
         The Symphony Grand II does not document LED SysEx. Try Note On on a channel (use Local Off
-        if notes also sound). Persist the working channel once LEDs respond.
+        if notes also sound). Persist the working channel once LEDs respond. Listen uses treble and
+        bass channels as two colors — probe/sweep to learn which channel is which color.
       </p>
       <label className="field">
         <span>Mode</span>
@@ -30,18 +50,15 @@ export function LightsPanel({ profile, onChange, onProbeChannel, onProbeAll }: L
           <option value="noteOn">Note On → piano</option>
         </select>
       </label>
-      <label className="field">
-        <span>Channel (1–16)</span>
-        <input
-          type="number"
-          min={1}
-          max={16}
-          value={profile.channel + 1}
-          onChange={(e) =>
-            onChange({ ...profile, channel: Math.min(15, Math.max(0, Number(e.target.value) - 1)) })
-          }
-        />
-      </label>
+      {channelInput("Practice channel (1–16)", profile.channel, (channel) =>
+        onChange({ ...profile, channel }),
+      )}
+      {channelInput("Treble channel (1–16)", profile.trebleChannel, (trebleChannel) =>
+        onChange({ ...profile, trebleChannel }),
+      )}
+      {channelInput("Bass channel (1–16)", profile.bassChannel, (bassChannel) =>
+        onChange({ ...profile, bassChannel }),
+      )}
       <div className="panel-row wrap">
         <button type="button" className="btn" onClick={onProbeChannel}>
           Pulse C4 on channel

@@ -12,10 +12,12 @@ import type { Hand, LoadedScore } from "./score/types";
 import { FeedbackEngine, type FeedbackState } from "./practice/feedbackEngine";
 import { ScorePlayer } from "./audio/scorePlayer";
 import { WilliamsLights, loadLightProfile, type LightProfile } from "./lights/williamsLights";
-import { ScoreView } from "./ui/ScoreView";
+import { ScoreView, type ListenTransport } from "./ui/ScoreView";
 import { PianoKeyboard, type KeyVisualState } from "./ui/PianoKeyboard";
 import { ConnectPanel } from "./ui/ConnectPanel";
 import { LightsPanel } from "./ui/LightsPanel";
+
+const DOCK_PIN_KEY = "music-mind-dock-pinned";
 
 export default function App() {
   const engineRef = useRef(new FeedbackEngine());
@@ -23,6 +25,11 @@ export default function App() {
   const playerRef = useRef(new ScorePlayer());
   const adapterRef = useRef<MidiAdapter | null>(null);
   const heardRef = useRef(new Set<number>());
+  const clickCycleChannelRef = useRef(loadLightProfile().channel);
+  const dockRef = useRef<HTMLElement | null>(null);
+  const listenTransportRef = useRef<ListenTransport>("idle");
+  const feedbackRef = useRef<FeedbackState | null>(null);
+  const listenEventIndexRef = useRef<number | null>(null);
 
   const [adapter, setAdapter] = useState<MidiAdapter | null>(null);
   const [inputs, setInputs] = useState<MidiDeviceInfo[]>([]);
@@ -33,11 +40,34 @@ export default function App() {
   const [feedback, setFeedback] = useState<FeedbackState | null>(null);
   const [hand, setHand] = useState<Hand>("both");
   const [heard, setHeard] = useState<Set<number>>(new Set());
-  const [listening, setListening] = useState(false);
+  const [listenTransport, setListenTransport] = useState<ListenTransport>("idle");
   const [listenEventIndex, setListenEventIndex] = useState<number | null>(null);
   const [listenBpm, setListenBpm] = useState(80);
   const [lightProfile, setLightProfile] = useState<LightProfile>(() => loadLightProfile());
   const [settingsOpen, setSettingsOpen] = useState(false);
+  const [dockPinned, setDockPinned] = useState(() => {
+    try {
+      return localStorage.getItem(DOCK_PIN_KEY) === "1";
+    } catch {
+      return false;
+    }
+  });
+  const [dockSpacerPx, setDockSpacerPx] = useState(0);
+
+  const listenActive = listenTransport !== "idle";
+  const listenPlaying = listenTransport === "playing";
+
+  useEffect(() => {
+    listenTransportRef.current = listenTransport;
+  }, [listenTransport]);
+
+  useEffect(() => {
+    feedbackRef.current = feedback;
+  }, [feedback]);
+
+  useEffect(() => {
+    listenEventIndexRef.current = listenEventIndex;
+  }, [listenEventIndex]);
 
   useEffect(() => {
     const player = playerRef.current;
@@ -63,11 +93,15 @@ export default function App() {
         if (msg.type === "noteon") {
           heardRef.current.add(msg.note);
           setHeard(new Set(heardRef.current));
-          engineRef.current.noteOn(msg.note);
+          if (listenTransportRef.current === "idle") {
+            engineRef.current.noteOn(msg.note);
+          }
         } else {
           heardRef.current.delete(msg.note);
           setHeard(new Set(heardRef.current));
-          engineRef.current.noteOff(msg.note);
+          if (listenTransportRef.current === "idle") {
+            engineRef.current.noteOff(msg.note);
+          }
         }
       });
     })();
@@ -78,16 +112,38 @@ export default function App() {
   }, []);
 
   useEffect(() => {
+    if (listenActive) return;
     if (!feedback) return;
     if (feedback.hinted || feedback.expected.size > 0) {
-      // Light expected keys when hinting; always sync when mode on
       const profile = lightsRef.current.getProfile();
-      if (profile.mode === "noteOn" && (feedback.hinted || true)) {
-        lightsRef.current.setExpected(feedback.hinted ? feedback.expected : feedback.expected);
+      if (profile.mode === "noteOn") {
+        lightsRef.current.setExpected(feedback.expected);
       }
     }
     if (feedback.done) lightsRef.current.clear();
-  }, [feedback]);
+  }, [feedback, listenActive]);
+
+  useEffect(() => {
+    try {
+      localStorage.setItem(DOCK_PIN_KEY, dockPinned ? "1" : "0");
+    } catch {
+      /* ignore */
+    }
+  }, [dockPinned]);
+
+  useEffect(() => {
+    if (!dockPinned) {
+      setDockSpacerPx(0);
+      return;
+    }
+    const el = dockRef.current;
+    if (!el) return;
+    const sync = () => setDockSpacerPx(el.getBoundingClientRect().height);
+    sync();
+    const ro = new ResizeObserver(sync);
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, [dockPinned]);
 
   const refreshDevices = useCallback(async () => {
     if (!adapterRef.current || adapterRef.current.kind === "none") return;
@@ -127,52 +183,112 @@ export default function App() {
     setConnectedName(null);
   }, []);
 
-  const stopListening = useCallback(() => {
-    playerRef.current.stop();
-    setListening(false);
-    setListenEventIndex(null);
+  const clearListenHeard = useCallback(() => {
     heardRef.current.clear();
     setHeard(new Set());
+    lightsRef.current.clear();
   }, []);
 
-  const startListening = useCallback(async () => {
+  const stopListen = useCallback(() => {
+    playerRef.current.stop({ emitEnded: false });
+    setListenTransport("idle");
+    setListenEventIndex(null);
+    clearListenHeard();
+  }, [clearListenHeard]);
+
+  const pauseListen = useCallback(() => {
+    playerRef.current.stop({ emitEnded: false });
+    setListenTransport("paused");
+    clearListenHeard();
+  }, [clearListenHeard]);
+
+  const playListenFrom = useCallback(
+    async (startEventIndex: number) => {
+      if (!score) return;
+      lightsRef.current.clear();
+      heardRef.current.clear();
+      setHeard(new Set());
+      setListenTransport("playing");
+      setListenEventIndex(startEventIndex);
+
+      try {
+        await playerRef.current.play(score, {
+          bpm: listenBpm,
+          hand: "both",
+          startEventIndex,
+          onEvent: (eventIndex) => setListenEventIndex(eventIndex),
+          onNote: (midi, on, staffIndex) => {
+            if (on) heardRef.current.add(midi);
+            else heardRef.current.delete(midi);
+            setHeard(new Set(heardRef.current));
+
+            const profile = lightsRef.current.getProfile();
+            if (profile.mode !== "noteOn") return;
+            const channel = staffIndex === 0 ? profile.trebleChannel : profile.bassChannel;
+            lightsRef.current.lightNote(midi, on, channel);
+          },
+          onEnded: () => {
+            setListenTransport("idle");
+            setListenEventIndex(null);
+            heardRef.current.clear();
+            setHeard(new Set());
+            lightsRef.current.clear();
+          },
+        });
+      } catch (err) {
+        setListenTransport("idle");
+        setListenEventIndex(null);
+        lightsRef.current.clear();
+        setMidiError(err instanceof Error ? err.message : String(err));
+      }
+    },
+    [score, listenBpm],
+  );
+
+  const togglePlayPause = useCallback(() => {
     if (!score) return;
-    // Full song from the start — score follow-along is separate from practice position.
-    setListening(true);
-    setListenEventIndex(0);
-    heardRef.current.clear();
-    setHeard(new Set());
-    try {
-      await playerRef.current.play(score, {
-        bpm: listenBpm,
-        hand: "both",
-        onEvent: (eventIndex) => setListenEventIndex(eventIndex),
-        onNote: (midi, on) => {
-          if (on) heardRef.current.add(midi);
-          else heardRef.current.delete(midi);
-          setHeard(new Set(heardRef.current));
-        },
-        onEnded: () => {
-          setListening(false);
-          setListenEventIndex(null);
-          heardRef.current.clear();
-          setHeard(new Set());
-        },
-      });
-    } catch (err) {
-      setListening(false);
-      setListenEventIndex(null);
-      setMidiError(err instanceof Error ? err.message : String(err));
+    if (listenTransportRef.current === "playing") {
+      pauseListen();
+      return;
     }
-  }, [score, listenBpm]);
+    if (listenTransportRef.current === "paused" && listenEventIndexRef.current != null) {
+      void playListenFrom(listenEventIndexRef.current);
+      return;
+    }
+    const start = feedbackRef.current?.eventIndex ?? 0;
+    void playListenFrom(start);
+  }, [score, pauseListen, playListenFrom]);
+
+  const onSeekListen = useCallback(
+    (eventIndex: number) => {
+      if (!score) return;
+      const clamped = Math.min(Math.max(0, eventIndex), Math.max(0, score.events.length - 1));
+      setListenEventIndex(clamped);
+
+      if (listenTransportRef.current === "playing") {
+        void playListenFrom(clamped);
+        return;
+      }
+      // idle or paused → park Listen cursor without auto-starting
+      playerRef.current.stop({ emitEnded: false });
+      setListenTransport("paused");
+      lightsRef.current.clear();
+    },
+    [score, playListenFrom],
+  );
+
+  const onSeekPractice = useCallback((eventIndex: number) => {
+    engineRef.current.seek(eventIndex);
+  }, []);
 
   const onLoadFile = useCallback(async (file: File | null) => {
     if (!file) return;
     try {
       setMidiError(null);
-      playerRef.current.stop();
-      setListening(false);
+      playerRef.current.stop({ emitEnded: false });
+      setListenTransport("idle");
       setListenEventIndex(null);
+      lightsRef.current.clear();
       const xml = await readScoreFile(file);
       const loaded = parseMusicXmlTimeline(xml, file.name);
       if (loaded.events.length === 0) {
@@ -210,7 +326,7 @@ export default function App() {
 
   const keyStates = useMemo(() => {
     const map = new Map<number, KeyVisualState>();
-    if (feedback) {
+    if (feedback && !listenActive) {
       for (const n of feedback.expected) {
         map.set(n, feedback.hinted ? "expected" : feedback.heldCorrect.has(n) ? "correct" : "expected");
       }
@@ -222,12 +338,42 @@ export default function App() {
       else if (map.get(n) === "expected") map.set(n, "correct");
     }
     return map;
-  }, [feedback, heard]);
+  }, [feedback, heard, listenActive]);
 
   const onLightProfile = useCallback((profile: LightProfile) => {
     setLightProfile(profile);
     lightsRef.current.setProfile(profile);
   }, []);
+
+  const onPianoKeyClick = useCallback((midi: number) => {
+    if (listenTransportRef.current === "idle") {
+      engineRef.current.noteOn(midi);
+    }
+    heardRef.current.add(midi);
+    setHeard(new Set(heardRef.current));
+
+    const profile = lightsRef.current.getProfile();
+    if (profile.mode === "noteOn") {
+      const ch = clickCycleChannelRef.current & 0x0f;
+      lightsRef.current.pulseProbe(midi, ch, 120);
+      clickCycleChannelRef.current = (ch + 1) & 0x0f;
+    }
+
+    window.setTimeout(() => {
+      heardRef.current.delete(midi);
+      setHeard(new Set(heardRef.current));
+      if (listenTransportRef.current === "idle") {
+        engineRef.current.noteOff(midi);
+      }
+    }, 120);
+  }, []);
+
+  const playPauseLabel = listenPlaying ? "Pause" : "Play";
+  const playPauseTitle = listenPlaying
+    ? "Pause Listen (keeps amber cursor)"
+    : listenTransport === "paused"
+      ? "Resume Listen from amber cursor"
+      : "Play remaining score from the practice cursor (does not move practice)";
 
   return (
     <div className="app">
@@ -322,7 +468,7 @@ export default function App() {
                   min={40}
                   max={200}
                   value={listenBpm}
-                  disabled={listening}
+                  disabled={listenPlaying}
                   onChange={(e) =>
                     setListenBpm(Math.min(200, Math.max(40, Number(e.target.value) || 80)))
                   }
@@ -330,20 +476,31 @@ export default function App() {
               </label>
               <button
                 type="button"
-                className={`btn primary score-listen-btn ${listening ? "listening" : ""}`}
-                onClick={() => {
-                  if (listening) stopListening();
-                  else void startListening();
-                }}
-                title="Play the whole piece from the start (does not change practice position)"
+                className={`btn primary score-listen-btn ${listenPlaying ? "listening" : ""}`}
+                onClick={togglePlayPause}
+                title={playPauseTitle}
               >
-                {listening ? "Stop" : "Listen"}
+                {playPauseLabel}
               </button>
+              {listenActive ? (
+                <button
+                  type="button"
+                  className="btn"
+                  onClick={stopListen}
+                  title="Stop Listen and hide amber cursor (practice stays put)"
+                >
+                  Stop
+                </button>
+              ) : null}
             </div>
             <ScoreView
               xml={score.xml}
+              events={score.events}
               feedback={feedback}
               listenEventIndex={listenEventIndex}
+              listenTransport={listenTransport}
+              onSeekListen={onSeekListen}
+              onSeekPractice={onSeekPractice}
             />
           </div>
         ) : (
@@ -378,22 +535,32 @@ export default function App() {
         )}
       </main>
 
-      <section className="dock">
+      <section
+        ref={dockRef}
+        className={`dock${dockPinned ? " dock-pinned" : ""}`}
+      >
         <div className="dock-controls">
           <p className="status">{feedback?.statusText ?? "Connect MIDI and load a score."}</p>
           <div className="dock-buttons">
             <button
               type="button"
-              className={`btn ${listening ? "listening" : ""}`}
-              onClick={() => {
-                if (listening) stopListening();
-                else void startListening();
-              }}
+              className={`btn ${listenPlaying ? "listening" : ""}`}
+              onClick={togglePlayPause}
               disabled={!score}
-              title="Play the whole piece from the start (does not change practice position)"
+              title={playPauseTitle}
             >
-              {listening ? "Stop" : "Listen"}
+              {playPauseLabel}
             </button>
+            {listenActive ? (
+              <button
+                type="button"
+                className="btn"
+                onClick={stopListen}
+                title="Stop Listen and hide amber cursor (practice stays put)"
+              >
+                Stop
+              </button>
+            ) : null}
             <label className="field inline">
               <span>BPM</span>
               <input
@@ -401,45 +568,44 @@ export default function App() {
                 min={40}
                 max={200}
                 value={listenBpm}
-                disabled={!score || listening}
+                disabled={!score || listenPlaying}
                 onChange={(e) => setListenBpm(Math.min(200, Math.max(40, Number(e.target.value) || 80)))}
               />
             </label>
-            <button type="button" className="btn" onClick={() => engineRef.current.reset()} disabled={!score}>
+            <button type="button" className="btn" onClick={() => engineRef.current.reset()} disabled={!score || listenActive}>
               Restart
             </button>
             <button
               type="button"
               className="btn"
               onClick={() => engineRef.current.showHint()}
-              disabled={!score || feedback?.done || listening}
+              disabled={!score || feedback?.done || listenActive}
             >
               Show hint
             </button>
             <label className="field inline">
               <span>Hands</span>
-              <select value={hand} onChange={(e) => onHandChange(e.target.value as Hand)} disabled={listening}>
+              <select value={hand} onChange={(e) => onHandChange(e.target.value as Hand)} disabled={listenActive}>
                 <option value="both">Both</option>
                 <option value="right">Right</option>
                 <option value="left">Left</option>
               </select>
             </label>
+            <button
+              type="button"
+              className={`btn${dockPinned ? " pinned" : ""}`}
+              onClick={() => setDockPinned((v) => !v)}
+              title={
+                dockPinned
+                  ? "Unpin piano — scroll with the page"
+                  : "Pin piano to the bottom of the screen while scrolling"
+              }
+            >
+              {dockPinned ? "Unpin" : "Pin"}
+            </button>
           </div>
         </div>
-        <PianoKeyboard
-          states={keyStates}
-          onKeyClick={(midi) => {
-            // Allow clicking keys to simulate MIDI when no hardware
-            engineRef.current.noteOn(midi);
-            heardRef.current.add(midi);
-            setHeard(new Set(heardRef.current));
-            window.setTimeout(() => {
-              heardRef.current.delete(midi);
-              setHeard(new Set(heardRef.current));
-              engineRef.current.noteOff(midi);
-            }, 120);
-          }}
-        />
+        <PianoKeyboard states={keyStates} onKeyClick={onPianoKeyClick} />
       </section>
 
       <footer className="wiz-footer">
@@ -447,6 +613,7 @@ export default function App() {
         <a href="https://www.wildideazone.com/projects/music-mind">About this build</a> ·{" "}
         <a href="https://www.wildideazone.com/projects">More projects</a>
       </footer>
+      {dockPinned ? <div className="dock-spacer" style={{ height: dockSpacerPx }} aria-hidden /> : null}
     </div>
   );
 }
