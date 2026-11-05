@@ -7,7 +7,7 @@ import {
 } from "./midi";
 import { readScoreFile } from "./score/loadMusicXml";
 import { parseMusicXmlTimeline } from "./score/parseMusicXmlTimeline";
-import { SAMPLE_SCORES, type SampleScore } from "./score/samples";
+import { type SampleScore } from "./score/samples";
 import type { Hand, LoadedScore } from "./score/types";
 import { FeedbackEngine, type FeedbackState } from "./practice/feedbackEngine";
 import { ScorePlayer } from "./audio/scorePlayer";
@@ -16,6 +16,8 @@ import { ScoreView, type ListenTransport } from "./ui/ScoreView";
 import { PianoKeyboard, type KeyVisualState } from "./ui/PianoKeyboard";
 import { ConnectPanel } from "./ui/ConnectPanel";
 import { LightsPanel } from "./ui/LightsPanel";
+import { LibraryBrowser } from "./ui/LibraryBrowser";
+import { PianoControlsHelp } from "./ui/PianoControlsHelp";
 import {
   ControlKeyHandler,
   isReservedControlMidi,
@@ -43,6 +45,7 @@ export default function App() {
   const heardRef = useRef(new Set<number>());
   const clickCycleChannelRef = useRef(loadLightProfile().channel);
   const dockRef = useRef<HTMLElement | null>(null);
+  const pianoControlsHelpBtnRef = useRef<HTMLButtonElement | null>(null);
   const listenTransportRef = useRef<ListenTransport>("idle");
   const feedbackRef = useRef<FeedbackState | null>(null);
   const listenEventIndexRef = useRef<number | null>(null);
@@ -72,7 +75,14 @@ export default function App() {
     }
   });
   const [pianoControlsEnabled, setPianoControlsEnabled] = useState(loadPianoControlsEnabled);
+  const [pianoControlsHelpOpen, setPianoControlsHelpOpen] = useState(false);
   const [dockSpacerPx, setDockSpacerPx] = useState(0);
+  const [loadingSampleId, setLoadingSampleId] = useState<string | null>(null);
+
+  const closePianoControlsHelp = useCallback(() => {
+    setPianoControlsHelpOpen(false);
+    pianoControlsHelpBtnRef.current?.focus();
+  }, []);
 
   const listenActive = listenTransport !== "idle";
   const listenPlaying = listenTransport === "playing";
@@ -379,6 +389,17 @@ export default function App() {
     engineRef.current.seek(eventIndex);
   }, []);
 
+  const goHome = useCallback(() => {
+    playerRef.current.stop({ emitEnded: false });
+    setListenTransport("idle");
+    setListenEventIndex(null);
+    heardRef.current.clear();
+    setHeard(new Set());
+    lightsRef.current.clear();
+    engineRef.current.unload();
+    setScore(null);
+  }, []);
+
   const onLoadFile = useCallback(async (file: File | null) => {
     if (!file) return;
     try {
@@ -402,17 +423,24 @@ export default function App() {
 
   const onLoadSample = useCallback(
     async (sample: SampleScore) => {
-      const res = await fetch(sample.path);
-      if (!res.ok) {
-        setMidiError(`Could not load sample “${sample.title}”.`);
-        return;
+      setLoadingSampleId(sample.id);
+      try {
+        const res = await fetch(sample.path);
+        if (!res.ok) {
+          setMidiError(`Could not load “${sample.title}”.`);
+          return;
+        }
+        const buffer = await res.arrayBuffer();
+        const fileName = sample.path.split("/").pop() ?? `${sample.id}.musicxml`;
+        const type = fileName.endsWith(".mxl")
+          ? "application/vnd.recordare.musicxml"
+          : "application/xml";
+        await onLoadFile(new File([buffer], fileName, { type }));
+      } catch (err) {
+        setMidiError(err instanceof Error ? err.message : String(err));
+      } finally {
+        setLoadingSampleId(null);
       }
-      const buffer = await res.arrayBuffer();
-      const fileName = sample.path.split("/").pop() ?? `${sample.id}.musicxml`;
-      const type = fileName.endsWith(".mxl")
-        ? "application/vnd.recordare.musicxml"
-        : "application/xml";
-      await onLoadFile(new File([buffer], fileName, { type }));
     },
     [onLoadFile],
   );
@@ -491,28 +519,27 @@ export default function App() {
         >
           <img src="/wild-idea-zone.svg" alt="Wild Idea Zone" width="28" height="28" />
         </a>
-        <h1 className="brand">Music Mind</h1>
+        <h1 className="brand">
+          <button
+            type="button"
+            className="brand-home"
+            onClick={goHome}
+            title="Back to all scores"
+            aria-label="Music Mind — back to all scores"
+          >
+            Music Mind
+          </button>
+        </h1>
         <div className="topbar-actions">
-          <label className="field inline sample-picker">
-            <span className="sr-only">Built-in scores</span>
-            <select
-              defaultValue=""
-              onChange={(e) => {
-                const sample = SAMPLE_SCORES.find((s) => s.id === e.target.value);
-                e.target.value = "";
-                if (sample) void onLoadSample(sample);
-              }}
-            >
-              <option value="" disabled>
-                Samples…
-              </option>
-              {SAMPLE_SCORES.map((sample) => (
-                <option key={sample.id} value={sample.id}>
-                  {sample.title} — {sample.composer}
-                </option>
-              ))}
-            </select>
-          </label>
+          <button
+            type="button"
+            className="btn"
+            onClick={goHome}
+            title="Browse scores"
+            disabled={!score}
+          >
+            Library
+          </button>
           <label className="btn primary file-btn">
             Load score
             <input
@@ -613,8 +640,8 @@ export default function App() {
           <div className="empty-score">
             <h2>Load sheet music to practice</h2>
             <p>
-              Drop a MusicXML or compressed <code>.mxl</code> file, connect your Williams piano over
-              MIDI, and play — the cursor waits for the correct notes.
+              Drop a MusicXML or compressed <code>.mxl</code> file, pick a score from the library,
+              connect your Williams piano over MIDI, and play — the cursor waits for the correct notes.
             </p>
             <div className="panel-row wrap" style={{ justifyContent: "center" }}>
               <label className="btn primary file-btn large">
@@ -627,16 +654,10 @@ export default function App() {
                 />
               </label>
             </div>
-            <ul className="sample-list">
-              {SAMPLE_SCORES.map((sample) => (
-                <li key={sample.id}>
-                  <button type="button" className="btn large" onClick={() => void onLoadSample(sample)}>
-                    <span className="sample-title">{sample.title}</span>
-                    <span className="sample-composer">{sample.composer}</span>
-                  </button>
-                </li>
-              ))}
-            </ul>
+            <LibraryBrowser
+              onSelect={(sample) => void onLoadSample(sample)}
+              loadingId={loadingSampleId}
+            />
           </div>
         )}
       </main>
@@ -697,17 +718,29 @@ export default function App() {
                 <option value="left">Left</option>
               </select>
             </label>
-            <label
-              className="field inline"
-              title="Use extreme piano keys as app controls (A0/B0/C1 and A7/B7/C8)"
-            >
-              <span>Piano controls</span>
-              <input
-                type="checkbox"
-                checked={pianoControlsEnabled}
-                onChange={(e) => setPianoControlsEnabled(e.target.checked)}
-              />
-            </label>
+            <div className="piano-controls-group">
+              <label
+                className="field inline"
+                title="Use extreme piano keys as app controls (A0/B0/C1 and A7/B7/C8)"
+              >
+                <span>Piano controls</span>
+                <input
+                  type="checkbox"
+                  checked={pianoControlsEnabled}
+                  onChange={(e) => setPianoControlsEnabled(e.target.checked)}
+                />
+              </label>
+              <button
+                ref={pianoControlsHelpBtnRef}
+                type="button"
+                className="btn ghost help-btn"
+                onClick={() => setPianoControlsHelpOpen(true)}
+                title="What are piano controls?"
+                aria-label="What are piano controls?"
+              >
+                ?
+              </button>
+            </div>
             <button
               type="button"
               className={`btn${dockPinned ? " pinned" : ""}`}
@@ -728,6 +761,8 @@ export default function App() {
           controlsEnabled={pianoControlsEnabled}
         />
       </section>
+
+      <PianoControlsHelp open={pianoControlsHelpOpen} onClose={closePianoControlsHelp} />
 
       <footer className="wiz-footer">
         A <a href="https://www.wildideazone.com/">Wild Idea Zone</a> project ·{" "}

@@ -8,3 +8,4 @@ Architecture decisions and project notes for Music Mind.
 - [0002 – Listen dual-channel key lights](adr/0002-listen-dual-channel-lights.md) — Listen drives Williams LEDs via Note On on staff-mapped treble/bass channels; click-to-cycle colors on the on-screen keyboard
 - [0003 – Listen play/pause from practice](adr/0003-listen-play-pause-from-practice.md) — Dual cursors; Play/Pause remaining from practice index; score click seeks Listen or practice
 - [0004 – Piano edge keys as app controls](adr/0004-piano-control-keys.md) — Toggleable control map on extreme keys; practice reset/step; Listen play-pause / next-10 / stop
+- [0005 – MuseTrainer remote library](adr/0005-musetrainer-remote-library.md) — Browse/load MuseTrainer public-domain `.mxl` over the network (README catalog + GitHub Pages); keep bundled Quick start samples

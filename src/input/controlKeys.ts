@@ -30,6 +30,22 @@ export const CONTROL_KEY_HINTS: ReadonlyMap<number, string> = new Map([
   [CONTROL_MIDI.playPause, "C8 · Play/Pause"],
 ]);
 
+export type ControlKeyHelpEntry = {
+  key: string;
+  gesture: string;
+  action: string;
+};
+
+/** Structured help copy for the Piano controls overlay (matches ADR 0004). */
+export const CONTROL_KEY_HELP: readonly ControlKeyHelpEntry[] = [
+  { key: "A0", gesture: "Double-tap (~400ms)", action: "Restart practice" },
+  { key: "B0", gesture: "Tap", action: "Practice cursor back 1 event" },
+  { key: "C1", gesture: "Tap", action: "Practice cursor forward 1 event" },
+  { key: "A7", gesture: "Tap", action: "Stop Listen" },
+  { key: "B7", gesture: "Tap", action: "Listen next 10 events" },
+  { key: "C8", gesture: "Tap", action: "Listen Play / Pause" },
+];
+
 export function isReservedControlMidi(midi: number): boolean {
   return RESERVED_CONTROL_MIDI.has(midi);
 }

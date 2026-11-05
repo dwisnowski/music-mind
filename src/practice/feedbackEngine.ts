@@ -34,6 +34,11 @@ export class FeedbackEngine {
     this.reset();
   }
 
+  unload() {
+    this.score = null;
+    this.reset();
+  }
+
   setHand(hand: Hand) {
     this.hand = hand;
     this.reset();

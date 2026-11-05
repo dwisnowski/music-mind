@@ -1,4 +1,6 @@
-# Built-in practice scores
+# Built-in practice scores (Quick start)
+
+Bundled for offline / first-run use. The in-app **MuseTrainer library** browser loads the rest of the catalog live from [musetrainer.github.io/library](https://musetrainer.github.io/library/) (see [ADR 0005](../../docs/adr/0005-musetrainer-remote-library.md)).
 
 | File | Piece | Source |
 | --- | --- | --- |
