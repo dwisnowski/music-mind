@@ -488,19 +488,18 @@ button.linkish {
   align-items: stretch;
   border: 1px solid var(--line);
   border-radius: 999px;
-  overflow: visible;
+  overflow: hidden;
   background: rgba(255, 255, 255, 0.35);
 }
 
-.mode-group .mode-seg,
-.mode-group .games-menu .mode-seg {
+.mode-group .mode-seg {
   border: 0;
   border-radius: 0;
   background: transparent;
   box-shadow: none;
 }
 
-.mode-group .games-menu:first-child .mode-seg {
+.mode-group > .mode-seg:first-child {
   border-radius: 999px 0 0 999px;
 }
 
@@ -508,8 +507,7 @@ button.linkish {
   border-radius: 0 999px 999px 0;
 }
 
-.mode-group .mode-seg + .mode-seg,
-.mode-group .games-menu + .mode-seg {
+.mode-group > .mode-seg + .mode-seg {
   border-left: 1px solid var(--line);
 }
 
@@ -523,8 +521,71 @@ button.linkish {
   color: var(--paper);
 }
 
-.mode-group .games-menu {
-  position: relative;
+.games-page {
+  max-width: 40rem;
+  margin: 3vh auto 8vh;
+  padding: 1.5rem 1.25rem 2rem;
+}
+
+.games-page-header {
+  text-align: center;
+  margin-bottom: 1.5rem;
+}
+
+.games-page-header h2 {
+  font-family: var(--font-display);
+  font-weight: 600;
+  margin: 0 0 0.5rem;
+}
+
+.games-page-header p {
+  margin: 0;
+  color: var(--ink-soft);
+}
+
+.games-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 1rem;
+}
+
+.games-list-item {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: 1.1rem 1.2rem;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: rgba(255, 255, 255, 0.45);
+  text-align: left;
+}
+
+.games-list-copy {
+  flex: 1 1 14rem;
+  min-width: 0;
+}
+
+.games-list-copy h3 {
+  font-family: var(--font-display);
+  font-weight: 600;
+  font-size: 1.2rem;
+  margin: 0 0 0.25rem;
+}
+
+.games-list-blurb {
+  margin: 0 0 0.4rem;
+  font-weight: 500;
+  color: var(--ink);
+}
+
+.games-list-detail {
+  margin: 0;
+  color: var(--ink-soft);
+  font-size: 0.95rem;
 }
 
 .btn.icon-btn {
@@ -1091,31 +1152,6 @@ button.linkish {
 
 .lane-right {
   color: #c4456e;
-}
-
-.games-menu {
-  position: relative;
-}
-
-.games-menu-panel {
-  position: absolute;
-  top: calc(100% + 0.35rem);
-  right: 0;
-  z-index: 40;
-  min-width: 12rem;
-  display: flex;
-  flex-direction: column;
-  gap: 0.25rem;
-  padding: 0.4rem;
-  background: var(--panel, #fffaf3);
-  border: 1px solid rgba(28, 20, 16, 0.12);
-  border-radius: 10px;
-  box-shadow: var(--shadow);
-}
-
-.games-menu-panel .btn {
-  justify-content: flex-start;
-  width: 100%;
 }
 
 .echo-ghost {

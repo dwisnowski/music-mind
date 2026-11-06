@@ -1,15 +1,13 @@
 import { LibraryBrowser } from "./LibraryBrowser";
 import type { SampleScore } from "../score/samples";
 
-export type GameId = "fallingLights" | "echoGhost" | "balloonPop";
-
 export interface LibraryPageProps {
   onLoadFile: (file: File | null) => void;
   onLoadSample: (sample: SampleScore) => void;
   loadingSampleId: string | null;
   onEnterWrite: () => void;
   onEnterFreePractice: () => void;
-  onEnterGame: (game: GameId) => void;
+  onBrowseGames: () => void;
 }
 
 export function LibraryPage({
@@ -18,7 +16,7 @@ export function LibraryPage({
   loadingSampleId,
   onEnterWrite,
   onEnterFreePractice,
-  onEnterGame,
+  onBrowseGames,
 }: LibraryPageProps) {
   return (
     <div className="library-page">
@@ -34,19 +32,11 @@ export function LibraryPage({
         <button type="button" className="linkish" onClick={onEnterWrite}>
           write your own sheet music
         </button>
-        , or try a mini-game:{" "}
-        <button type="button" className="linkish" onClick={() => onEnterGame("fallingLights")}>
-          Falling Lights
-        </button>{" "}
-        (timing),{" "}
-        <button type="button" className="linkish" onClick={() => onEnterGame("echoGhost")}>
-          Echo Ghost
-        </button>{" "}
-        (ear echo), or{" "}
-        <button type="button" className="linkish" onClick={() => onEnterGame("balloonPop")}>
-          Balloon Pop
-        </button>{" "}
-        (pop note/chord balloons).
+        , or try a{" "}
+        <button type="button" className="linkish" onClick={onBrowseGames}>
+          mini-game
+        </button>
+        .
       </p>
       <div className="panel-row wrap library-actions">
         <label className="btn primary file-btn large">
@@ -58,18 +48,6 @@ export function LibraryPage({
             onChange={(e) => onLoadFile(e.target.files?.[0] ?? null)}
           />
         </label>
-        <button type="button" className="btn large" onClick={onEnterWrite}>
-          Write
-        </button>
-        <button type="button" className="btn large" onClick={() => onEnterGame("fallingLights")}>
-          Falling Lights
-        </button>
-        <button type="button" className="btn large" onClick={() => onEnterGame("echoGhost")}>
-          Echo Ghost
-        </button>
-        <button type="button" className="btn large" onClick={() => onEnterGame("balloonPop")}>
-          Balloon Pop
-        </button>
       </div>
       <LibraryBrowser onSelect={onLoadSample} loadingId={loadingSampleId} />
     </div>

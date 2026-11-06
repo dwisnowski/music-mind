@@ -1,11 +1,10 @@
 import { MusicMindParticles } from "./MusicMindParticles";
-import type { GameId } from "./LibraryPage";
 
 export interface HomePageProps {
   onBrowseLibrary: () => void;
   onEnterFreePractice: () => void;
   onEnterWrite: () => void;
-  onEnterGame: (game: GameId) => void;
+  onBrowseGames: () => void;
   onConnect: () => void;
 }
 
@@ -13,7 +12,7 @@ export function HomePage({
   onBrowseLibrary,
   onEnterFreePractice,
   onEnterWrite,
-  onEnterGame,
+  onBrowseGames,
   onConnect,
 }: HomePageProps) {
   return (
@@ -37,7 +36,7 @@ export function HomePage({
               Write
             </button>
             <span aria-hidden="true">·</span>
-            <button type="button" className="linkish" onClick={() => onEnterGame("fallingLights")}>
+            <button type="button" className="linkish" onClick={onBrowseGames}>
               Games
             </button>
             <span aria-hidden="true">·</span>

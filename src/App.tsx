@@ -20,7 +20,8 @@ import { ConnectPanel } from "./ui/ConnectPanel";
 import { LightsPanel } from "./ui/LightsPanel";
 import { PianoControlsHelp } from "./ui/PianoControlsHelp";
 import { HomePage } from "./ui/HomePage";
-import { LibraryPage, type GameId } from "./ui/LibraryPage";
+import { LibraryPage } from "./ui/LibraryPage";
+import { GamesPage, type GameId } from "./ui/GamesPage";
 import {
   ControlKeyHandler,
   isReservedControlMidi,
@@ -71,6 +72,7 @@ const LISTEN_MIDI_SOUND_KEY = "mm.listenMidiSound";
 type AppMode =
   | "home"
   | "library"
+  | "games"
   | "practice"
   | "write"
   | "freePractice"
@@ -170,7 +172,6 @@ export default function App() {
   const [dockSpacerPx, setDockSpacerPx] = useState(0);
   const [loadingSampleId, setLoadingSampleId] = useState<string | null>(null);
   const [appMode, setAppMode] = useState<AppMode>("home");
-  const [gamesMenuOpen, setGamesMenuOpen] = useState(false);
   const [echoSnap, setEchoSnap] = useState<EchoGhostSnapshot>(() => echoGhostEngine.snapshot());
   const [balloonSnap, setBalloonSnap] = useState<BalloonPopSnapshot>(() =>
     balloonPopEngine.snapshot(),
@@ -193,10 +194,12 @@ export default function App() {
   const listenPlaying = listenTransport === "playing";
   const homeActive = appMode === "home";
   const libraryActive = appMode === "library";
+  const gamesHubActive = appMode === "games";
   const writeActive = appMode === "write";
   const freePracticeActive = appMode === "freePractice";
   const gameActive =
     appMode === "fallingLights" || appMode === "echoGhost" || appMode === "balloonPop";
+  const gamesSegmentActive = gamesHubActive || gameActive;
 
   const returnAfterMode = useCallback(() => {
     setAppMode(scoreRef.current ? "practice" : "home");
@@ -234,17 +237,6 @@ export default function App() {
   useEffect(() => echoGhostEngine.subscribe(setEchoSnap), [echoGhostEngine]);
   useEffect(() => balloonPopEngine.subscribe(setBalloonSnap), [balloonPopEngine]);
   useEffect(() => freePracticeEngine.subscribe(setFpSnap), [freePracticeEngine]);
-
-  useEffect(() => {
-    if (!gamesMenuOpen) return;
-    const onDoc = (e: MouseEvent) => {
-      const t = e.target as HTMLElement | null;
-      if (t?.closest?.(".games-menu")) return;
-      setGamesMenuOpen(false);
-    };
-    document.addEventListener("mousedown", onDoc);
-    return () => document.removeEventListener("mousedown", onDoc);
-  }, [gamesMenuOpen]);
 
   useEffect(() => {
     feedbackRef.current = feedback;
@@ -678,9 +670,8 @@ export default function App() {
     echoGhostRef.current.stop();
     balloonPopRef.current.stop();
     freePracticeRef.current.stop();
-    setGamesMenuOpen(false);
-    returnAfterMode();
-  }, [returnAfterMode]);
+    setAppMode("games");
+  }, []);
 
   const enterGame = useCallback(
     (game: GameId) => {
@@ -692,13 +683,26 @@ export default function App() {
       echoGhostRef.current.stop();
       balloonPopRef.current.stop();
       freePracticeRef.current.stop();
-      setGamesMenuOpen(false);
       setWriteScore(null);
       setWriteInitialXml(null);
       setAppMode(game);
     },
     [clearListenHeard],
   );
+
+  const goGames = useCallback(() => {
+    playerRef.current.stop({ emitEnded: false });
+    setListenTransport("idle");
+    setListenEventIndex(null);
+    clearListenHeard();
+    fallingLightsRef.current.stop();
+    echoGhostRef.current.stop();
+    balloonPopRef.current.stop();
+    freePracticeRef.current.stop();
+    setWriteScore(null);
+    setWriteInitialXml(null);
+    setAppMode("games");
+  }, [clearListenHeard]);
 
   const enterWrite = useCallback(
     (opts?: { xml?: string; title?: string }) => {
@@ -710,7 +714,6 @@ export default function App() {
       echoGhostRef.current.stop();
       balloonPopRef.current.stop();
       freePracticeRef.current.stop();
-      setGamesMenuOpen(false);
       setWriteInitialXml(opts?.xml ?? scoreRef.current?.xml ?? null);
       setWriteInitialTitle(opts?.title ?? scoreRef.current?.title);
       setWriteScore(null);
@@ -728,7 +731,6 @@ export default function App() {
     echoGhostRef.current.stop();
     balloonPopRef.current.stop();
     freePracticeRef.current.clear();
-    setGamesMenuOpen(false);
     setWriteScore(null);
     setWriteInitialXml(null);
     setAppMode("freePractice");
@@ -831,7 +833,6 @@ export default function App() {
     echoGhostRef.current.stop();
     balloonPopRef.current.stop();
     freePracticeRef.current.stop();
-    setGamesMenuOpen(false);
     setAppMode(mode);
     playerRef.current.stop({ emitEnded: false });
     setListenTransport("idle");
@@ -1119,49 +1120,26 @@ export default function App() {
         </h1>
         <div className="topbar-actions">
           <div className="mode-group" role="group" aria-label="Modes">
-            <div className="games-menu mode-group-seg">
-              <button
-                type="button"
-                className={`btn mode-seg${gameActive ? " primary" : ""}`}
-                onClick={() => {
-                  if (gameActive) exitGame();
-                  else setGamesMenuOpen((v) => !v);
-                }}
-                aria-expanded={gamesMenuOpen}
-                aria-haspopup="menu"
-                title={gameActive ? "Leave game" : "Open mini-games"}
-              >
-                Games
-              </button>
-              {gamesMenuOpen && !gameActive ? (
-                <div className="games-menu-panel" role="menu">
-                  <button
-                    type="button"
-                    className="btn"
-                    role="menuitem"
-                    onClick={() => enterGame("fallingLights")}
-                  >
-                    Falling Lights
-                  </button>
-                  <button
-                    type="button"
-                    className="btn"
-                    role="menuitem"
-                    onClick={() => enterGame("echoGhost")}
-                  >
-                    Echo Ghost
-                  </button>
-                  <button
-                    type="button"
-                    className="btn"
-                    role="menuitem"
-                    onClick={() => enterGame("balloonPop")}
-                  >
-                    Balloon Pop
-                  </button>
-                </div>
-              ) : null}
-            </div>
+            <button
+              type="button"
+              className={`btn mode-seg${libraryActive ? " primary" : ""}`}
+              onClick={() => {
+                if (!libraryActive) goLibrary();
+              }}
+              title="Browse scores"
+            >
+              Library
+            </button>
+            <button
+              type="button"
+              className={`btn mode-seg${gamesSegmentActive ? " primary" : ""}`}
+              onClick={() => {
+                if (!gamesHubActive) goGames();
+              }}
+              title="Browse mini-games"
+            >
+              Games
+            </button>
             <button
               type="button"
               className={`btn mode-seg${freePracticeActive ? " primary" : ""}`}
@@ -1191,26 +1169,14 @@ export default function App() {
           </div>
           <button
             type="button"
-            className="btn"
-            onClick={goLibrary}
-            title="Browse scores"
-            disabled={libraryActive}
-          >
-            Library
-          </button>
-          <button
-            type="button"
-            className="btn"
+            className="btn ghost icon-btn"
             onClick={() => {
+              if (settingsOpen) {
+                setSettingsOpen(false);
+                return;
+              }
               void refreshDevices().then(() => setSettingsOpen(true));
             }}
-          >
-            Connect
-          </button>
-          <button
-            type="button"
-            className="btn ghost icon-btn"
-            onClick={() => setSettingsOpen((v) => !v)}
             title="Settings"
             aria-label="Settings"
             aria-pressed={settingsOpen}
@@ -1266,7 +1232,7 @@ export default function App() {
             onBrowseLibrary={goLibrary}
             onEnterFreePractice={() => enterFreePractice()}
             onEnterWrite={() => enterWrite()}
-            onEnterGame={enterGame}
+            onBrowseGames={goGames}
             onConnect={() => {
               void refreshDevices().then(() => setSettingsOpen(true));
             }}
@@ -1278,8 +1244,10 @@ export default function App() {
             loadingSampleId={loadingSampleId}
             onEnterWrite={() => enterWrite()}
             onEnterFreePractice={() => enterFreePractice()}
-            onEnterGame={enterGame}
+            onBrowseGames={goGames}
           />
+        ) : gamesHubActive ? (
+          <GamesPage onEnterGame={enterGame} />
         ) : appMode === "write" ? (
           <WriteWorkspace
             initialXml={writeInitialXml}
@@ -1446,7 +1414,7 @@ export default function App() {
             loadingSampleId={loadingSampleId}
             onEnterWrite={() => enterWrite()}
             onEnterFreePractice={() => enterFreePractice()}
-            onEnterGame={enterGame}
+            onBrowseGames={goGames}
           />
         )}
       </main>
