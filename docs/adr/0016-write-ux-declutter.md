@@ -15,12 +15,16 @@ Write mode ([ADR 0011](0011-sheet-music-write-mode.md)) grew a dense toolbar, du
 - **Riff tray** is opt-in via a transport toggle (default closed); capture semantics unchanged.
 - Secondary file actions (Blank, library, open file, drafts, downloads) live in a compact **File** menu; Leave, Mode, title, Song template, and Open in Practice stay visible.
 - Quiet the tray Keep controls into a single select + action; soften panel chrome.
+- Note-writing controls (durations, rest, tie, undo/redo/delete) live in a labeled **Notes** group.
+- Remove in-page **Leave Write** (exit via the topbar Write mode segment).
+- Write complexity **Mode** and Listen transport (BPM / piano sound / Play) sit in fixed top-right chrome matching Practice’s listen pill; quantize **Grid** sits on the score pane.
 
 ## Consequences
 
 - First-visit Write is calmer; form roadmap and riff tray remain one click away when needed.
 - Users must discover the Riff tray toggle for clip workflows (acceptable vs permanent side chrome).
 - Song template remains the only empty-state entry to forms.
+- Leaving Write is only via the global mode bar — no duplicate Leave control.
 
 ## Code anchors
 

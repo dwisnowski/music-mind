@@ -90,11 +90,12 @@ export function WriteWorkspace({
   onSeekListen,
   onLoadedScoreChange,
   onOpenInPractice,
-  onExit,
+  onExit: _onExit,
   noteSinkRef,
   feedbackPlaceholder,
   midiAdapter = null,
 }: WriteWorkspaceProps) {
+  void _onExit; // Leave Write via topbar mode segment
   const initialDoc = useMemo(() => createBlankDocument({ bars: 8 }), []);
   const stackRef = useRef<WriteCommandStack>(null!);
   if (!stackRef.current) {
@@ -472,11 +473,8 @@ export function WriteWorkspace({
 
   return (
     <div className="write-workspace">
-      <div className="write-toolbar">
-        <button type="button" className="btn" onClick={onExit} title="Leave Write">
-          Leave Write
-        </button>
-        <label className="field inline">
+      <div className="write-floating-chrome" aria-label="Write chrome">
+        <label className="field inline write-mode-fixed">
           <span>Mode</span>
           <select
             value={doc.writeMode}
@@ -492,6 +490,82 @@ export function WriteWorkspace({
             <option value="advanced">Advanced</option>
           </select>
         </label>
+        <div className="score-listen-bar" aria-label="Listen controls">
+          <label className="field inline score-bpm">
+            <span>BPM</span>
+            <input
+              type="number"
+              min={40}
+              max={200}
+              value={listenBpm}
+              disabled={listenPlaying || captureState !== "idle"}
+              onChange={(e) => {
+                const bpm = Math.min(200, Math.max(40, Number(e.target.value) || 80));
+                onListenBpm(bpm);
+                stackRef.current.dispatch({ type: "setMeta", bpm });
+              }}
+            />
+          </label>
+          <button
+            type="button"
+            className={`btn score-listen-sound-btn ${listenMidiSound ? "active" : ""}`}
+            aria-pressed={listenMidiSound}
+            aria-label={
+              listenMidiSound
+                ? "Piano MIDI sound on — Listen plays on your piano"
+                : "Piano MIDI sound off"
+            }
+            title={
+              listenMidiSound
+                ? "Piano sound on: Listen sends MIDI so your piano plays"
+                : "Piano sound off: Listen uses computer speakers only"
+            }
+            onClick={onToggleListenMidiSound}
+          >
+            {listenMidiSound ? (
+              <svg
+                className="score-listen-sound-icon"
+                viewBox="0 0 24 24"
+                width="18"
+                height="18"
+                aria-hidden="true"
+              >
+                <path
+                  fill="currentColor"
+                  d="M3 9v6h4l5 5V4L7 9H3zm13.5 3c0-1.77-1.02-3.29-2.5-4.03v8.05c1.48-.74 2.5-2.26 2.5-4.02zM14 3.23v2.06c2.89.86 5 3.54 5 6.71s-2.11 5.85-5 6.71v2.06c4.01-.91 7-4.49 7-8.77s-2.99-7.86-7-8.77z"
+                />
+              </svg>
+            ) : (
+              <svg
+                className="score-listen-sound-icon"
+                viewBox="0 0 24 24"
+                width="18"
+                height="18"
+                aria-hidden="true"
+              >
+                <path
+                  fill="currentColor"
+                  d="M16.5 12c0-1.77-1.02-3.29-2.5-4.03v2.21l2.45 2.45c.03-.2.05-.41.05-.63zm2.5 0c0 .94-.2 1.82-.54 2.64l1.51 1.51C20.63 14.91 21 13.5 21 12c0-4.28-2.99-7.86-7-8.77v2.06c2.89.86 5 3.54 5 6.71zM4.27 3 3 4.27 7.73 9H3v6h4l5 5v-6.73l4.25 4.25c-.67.52-1.42.93-2.25 1.18v2.06c1.38-.31 2.63-.95 3.69-1.81L19.73 21 21 19.73l-9-9L4.27 3zM12 4 9.91 6.09 12 8.18V4z"
+                />
+              </svg>
+            )}
+          </button>
+          <button
+            type="button"
+            className={`btn primary score-listen-btn ${listenPlaying ? "listening" : ""}`}
+            onClick={onPlayPause}
+          >
+            {listenPlaying ? "Pause" : "Play"}
+          </button>
+          {listenActive ? (
+            <button type="button" className="btn" onClick={onStopListen}>
+              Stop
+            </button>
+          ) : null}
+        </div>
+      </div>
+
+      <div className="write-toolbar">
         <input
           className="write-title"
           value={doc.title}
@@ -569,57 +643,60 @@ export function WriteWorkspace({
       </div>
 
       <div className="write-tools">
-        <div className="write-duration-palette" role="group" aria-label="Note duration">
-          {DURATION_BUTTONS.map((d) => (
+        <div className="write-note-group" role="group" aria-label="Note writing">
+          <span className="write-note-group-label">Notes</span>
+          <div className="write-duration-palette" role="group" aria-label="Note duration">
+            {DURATION_BUTTONS.map((d) => (
+              <button
+                key={d.id}
+                type="button"
+                className={`btn${doc.stepDuration === d.id ? " primary" : ""}`}
+                onClick={() =>
+                  stackRef.current.dispatch({ type: "setStepDuration", duration: d.id })
+                }
+              >
+                {d.label}
+              </button>
+            ))}
             <button
-              key={d.id}
               type="button"
-              className={`btn${doc.stepDuration === d.id ? " primary" : ""}`}
-              onClick={() =>
-                stackRef.current.dispatch({ type: "setStepDuration", duration: d.id })
-              }
+              className="btn"
+              onClick={() => stackRef.current.dispatch({ type: "insertRest" })}
             >
-              {d.label}
+              Rest
             </button>
-          ))}
-          <button
-            type="button"
-            className="btn"
-            onClick={() => stackRef.current.dispatch({ type: "insertRest" })}
-          >
-            Rest
-          </button>
-          <button
-            type="button"
-            className={`btn${doc.tieNext ? " primary" : ""}`}
-            onClick={() =>
-              stackRef.current.dispatch({ type: "setTieNext", tieNext: !doc.tieNext })
-            }
-            title="Tie next note"
-          >
-            Tie
-          </button>
-          <button type="button" className="btn" onClick={() => stackRef.current.undo()}>
-            Undo
-          </button>
-          <button type="button" className="btn" onClick={() => stackRef.current.redo()}>
-            Redo
-          </button>
-          <button
-            type="button"
-            className="btn"
-            onClick={() => stackRef.current.dispatch({ type: "deleteSelection" })}
-            disabled={!doc.selectionId}
-          >
-            Delete
-          </button>
-          <button
-            type="button"
-            className="btn"
-            onClick={() => stackRef.current.dispatch({ type: "deleteBackward" })}
-          >
-            ⌫
-          </button>
+            <button
+              type="button"
+              className={`btn${doc.tieNext ? " primary" : ""}`}
+              onClick={() =>
+                stackRef.current.dispatch({ type: "setTieNext", tieNext: !doc.tieNext })
+              }
+              title="Tie next note"
+            >
+              Tie
+            </button>
+            <button type="button" className="btn" onClick={() => stackRef.current.undo()}>
+              Undo
+            </button>
+            <button type="button" className="btn" onClick={() => stackRef.current.redo()}>
+              Redo
+            </button>
+            <button
+              type="button"
+              className="btn"
+              onClick={() => stackRef.current.dispatch({ type: "deleteSelection" })}
+              disabled={!doc.selectionId}
+            >
+              Delete
+            </button>
+            <button
+              type="button"
+              className="btn"
+              onClick={() => stackRef.current.dispatch({ type: "deleteBackward" })}
+            >
+              ⌫
+            </button>
+          </div>
         </div>
 
         <span className="write-tools-sep" aria-hidden="true" />
@@ -643,53 +720,6 @@ export function WriteWorkspace({
             Stop ({captureState})
           </button>
         )}
-        <label className="field inline">
-          <span>Grid</span>
-          <select
-            value={String(gridQuarters)}
-            onChange={(e) => setGridQuarters(Number(e.target.value))}
-          >
-            <option value="1">Quarter</option>
-            <option value="0.5">Eighth</option>
-            <option value="0.25">16th</option>
-          </select>
-        </label>
-        <label className="field inline score-bpm">
-          <span>BPM</span>
-          <input
-            type="number"
-            min={40}
-            max={200}
-            value={listenBpm}
-            disabled={listenPlaying || captureState !== "idle"}
-            onChange={(e) => {
-              const bpm = Math.min(200, Math.max(40, Number(e.target.value) || 80));
-              onListenBpm(bpm);
-              stackRef.current.dispatch({ type: "setMeta", bpm });
-            }}
-          />
-        </label>
-        <button
-          type="button"
-          className={`btn ${listenMidiSound ? "active" : ""}`}
-          aria-pressed={listenMidiSound}
-          onClick={onToggleListenMidiSound}
-          title="Piano MIDI sound for Listen"
-        >
-          Piano sound
-        </button>
-        <button
-          type="button"
-          className={`btn primary ${listenPlaying ? "listening" : ""}`}
-          onClick={onPlayPause}
-        >
-          {listenPlaying ? "Pause" : "Play"}
-        </button>
-        {listenActive ? (
-          <button type="button" className="btn" onClick={onStopListen}>
-            Stop
-          </button>
-        ) : null}
         <button
           type="button"
           className={`btn${trayOpen || trayTakeActive ? " primary" : ""}`}
@@ -915,6 +945,23 @@ export function WriteWorkspace({
         }`}
       >
         <div className="write-score-pane">
+          <div className="write-score-pane-bar">
+            <label className="field inline write-score-grid">
+              <span>Grid</span>
+              <select
+                value={String(gridQuarters)}
+                onChange={(e) => setGridQuarters(Number(e.target.value))}
+              >
+                <option value="1">Quarter</option>
+                <option value="0.5">Eighth</option>
+                <option value="0.25">16th</option>
+              </select>
+            </label>
+            <p className="muted write-cursor-hint">
+              Bar {doc.cursor.measureIndex + 1} · {doc.stepDuration}
+              {doc.sections.length ? ` · ${doc.sections.length} sections` : ""}
+            </p>
+          </div>
           <ScoreView
             xml={xml}
             events={events}
@@ -938,10 +985,6 @@ export function WriteWorkspace({
               stackRef.current.dispatch({ type: "select", noteId: note?.id ?? null });
             }}
           />
-          <p className="muted write-cursor-hint">
-            Bar {doc.cursor.measureIndex + 1} · {doc.stepDuration}
-            {doc.sections.length ? ` · ${doc.sections.length} sections` : ""}
-          </p>
         </div>
         {trayOpen ? (
           <WriteClipTray

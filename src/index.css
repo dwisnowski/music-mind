@@ -1054,6 +1054,15 @@ button.linkish {
     width: 100%;
   }
 
+  .write-floating-chrome {
+    top: auto;
+    bottom: calc(var(--dock-estimate, 7rem) + 0.5rem);
+    right: max(0.75rem, env(safe-area-inset-right));
+    flex-wrap: wrap;
+    justify-content: flex-end;
+    max-width: calc(100vw - 1.5rem);
+  }
+
   .keyboard {
     height: 84px;
   }
@@ -1496,6 +1505,69 @@ button.linkish {
   flex: 1;
 }
 
+.write-floating-chrome {
+  position: fixed;
+  top: 5.5rem;
+  right: max(1rem, env(safe-area-inset-right));
+  z-index: 15;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  pointer-events: none;
+}
+
+.write-floating-chrome > * {
+  pointer-events: auto;
+}
+
+.write-floating-chrome .score-listen-bar {
+  position: static;
+  top: auto;
+  right: auto;
+}
+
+.write-mode-fixed {
+  margin: 0;
+  padding: 0.3rem 0.55rem;
+  border-radius: 999px;
+  background: rgba(255, 252, 247, 0.92);
+  border: 1px solid var(--line);
+  box-shadow: var(--shadow);
+  font-size: 0.85rem;
+}
+
+.write-note-group {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.4rem;
+  padding: 0.3rem 0.45rem;
+  border: 1px solid color-mix(in srgb, var(--line) 75%, transparent);
+  border-radius: var(--radius);
+  background: color-mix(in srgb, var(--paper) 55%, transparent);
+}
+
+.write-note-group-label {
+  font-size: 0.75rem;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--ink-soft);
+  margin-right: 0.15rem;
+}
+
+.write-score-pane-bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  margin-bottom: 0.4rem;
+}
+
+.write-score-grid {
+  margin: 0;
+}
+
 .write-toolbar,
 .write-tools,
 .write-entry-transport,
@@ -1708,7 +1780,7 @@ button.linkish {
 }
 
 .write-cursor-hint {
-  margin: 0.35rem 0 0;
+  margin: 0;
   font-size: 0.82rem;
 }
 
