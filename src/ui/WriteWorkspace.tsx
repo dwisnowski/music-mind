@@ -64,7 +64,6 @@ export interface WriteWorkspaceProps {
   onStopListen: () => void;
   onSeekListen: (eventIndex: number) => void;
   onLoadedScoreChange: (score: LoadedScore | null) => void;
-  onOpenInPractice: (score: LoadedScore) => void;
   onExit: () => void;
   /** Wired from App MIDI / piano — step or record (+ velocity / pedal). */
   noteSinkRef: MutableRefObject<{
@@ -89,7 +88,6 @@ export function WriteWorkspace({
   onStopListen,
   onSeekListen,
   onLoadedScoreChange,
-  onOpenInPractice,
   onExit: _onExit,
   noteSinkRef,
   feedbackPlaceholder,
@@ -626,20 +624,6 @@ export function WriteWorkspace({
             </button>
           </div>
         </details>
-        <button
-          type="button"
-          className="btn primary"
-          onClick={() => {
-            try {
-              const loaded = parseMusicXmlTimeline(toMusicXml(doc), doc.title);
-              onOpenInPractice(loaded);
-            } catch (err) {
-              setStatus(err instanceof Error ? err.message : String(err));
-            }
-          }}
-        >
-          Open in Practice
-        </button>
       </div>
 
       <div className="write-tools">

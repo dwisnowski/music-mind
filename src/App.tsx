@@ -895,18 +895,6 @@ export default function App() {
     returnAfterMode();
   }, [clearListenHeard, returnAfterMode]);
 
-  const openWriteInPractice = useCallback((loaded: LoadedScore) => {
-    playerRef.current.stop({ emitEnded: false });
-    setListenTransport("idle");
-    setListenEventIndex(null);
-    clearListenHeard();
-    setWriteScore(null);
-    setWriteInitialXml(null);
-    setScore(loaded);
-    engineRef.current.load(loaded, hand);
-    setAppMode("practice");
-  }, [clearListenHeard, hand]);
-
   const clearToSurface = useCallback((mode: "home" | "library") => {
     fallingLightsRef.current.stop();
     echoGhostRef.current.stop();
@@ -1369,7 +1357,6 @@ export default function App() {
             onStopListen={stopListen}
             onSeekListen={onSeekListen}
             onLoadedScoreChange={setWriteScore}
-            onOpenInPractice={openWriteInPractice}
             onExit={exitWrite}
             noteSinkRef={writeNoteSinkRef}
             feedbackPlaceholder={null}
