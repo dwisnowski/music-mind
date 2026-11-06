@@ -17,7 +17,7 @@ Write mode ([ADR 0011](0011-sheet-music-write-mode.md)) grew a dense toolbar, du
 - Quiet the tray Keep controls into a single select + action; soften panel chrome.
 - Note-writing controls (durations, rest, tie, undo/redo/delete) live in a labeled **Notes** group.
 - Remove in-page **Leave Write** (exit via the topbar Write mode segment).
-- Write complexity **Mode** and Listen transport (BPM / piano sound / Play) sit in fixed top-right chrome matching Practice’s listen pill; quantize **Grid** sits on the score pane.
+- Write complexity **Mode** sits in the left toolbar with the title; Listen transport (BPM / piano sound / Play) stays in fixed top-right chrome matching Practice’s listen pill; quantize **Grid** sits on the score pane.
 
 ## Consequences
 

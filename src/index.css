@@ -1526,14 +1526,9 @@ button.linkish {
   right: auto;
 }
 
-.write-mode-fixed {
+.write-mode-toolbar {
   margin: 0;
-  padding: 0.3rem 0.55rem;
-  border-radius: 999px;
-  background: rgba(255, 252, 247, 0.92);
-  border: 1px solid var(--line);
-  box-shadow: var(--shadow);
-  font-size: 0.85rem;
+  flex-shrink: 0;
 }
 
 .write-note-group {

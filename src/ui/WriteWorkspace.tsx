@@ -473,23 +473,7 @@ export function WriteWorkspace({
 
   return (
     <div className="write-workspace">
-      <div className="write-floating-chrome" aria-label="Write chrome">
-        <label className="field inline write-mode-fixed">
-          <span>Mode</span>
-          <select
-            value={doc.writeMode}
-            onChange={(e) =>
-              stackRef.current.dispatch({
-                type: "setWriteMode",
-                writeMode: e.target.value as WriteComplexity,
-              })
-            }
-          >
-            <option value="simple">Simple</option>
-            <option value="lyrics">Simple + lyrics</option>
-            <option value="advanced">Advanced</option>
-          </select>
-        </label>
+      <div className="write-floating-chrome">
         <div className="score-listen-bar" aria-label="Listen controls">
           <label className="field inline score-bpm">
             <span>BPM</span>
@@ -566,6 +550,22 @@ export function WriteWorkspace({
       </div>
 
       <div className="write-toolbar">
+        <label className="field inline write-mode-toolbar">
+          <span>Mode</span>
+          <select
+            value={doc.writeMode}
+            onChange={(e) =>
+              stackRef.current.dispatch({
+                type: "setWriteMode",
+                writeMode: e.target.value as WriteComplexity,
+              })
+            }
+          >
+            <option value="simple">Simple</option>
+            <option value="lyrics">Simple + lyrics</option>
+            <option value="advanced">Advanced</option>
+          </select>
+        </label>
         <input
           className="write-title"
           value={doc.title}
