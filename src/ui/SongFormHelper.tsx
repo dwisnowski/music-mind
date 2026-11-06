@@ -20,19 +20,8 @@ export function SongFormHelper({
   onToggleChecklist,
   onEditForm,
 }: SongFormHelperProps) {
-  if (!sections.length) {
-    return (
-      <aside className="song-form-helper empty">
-        <h3>Song form</h3>
-        <p className="muted">
-          No form yet. Apply a template to scaffold intro, verses, choruses, and more.
-        </p>
-        <button type="button" className="btn primary" onClick={onEditForm}>
-          Choose template
-        </button>
-      </aside>
-    );
-  }
+  // Empty state lives on Song template in the toolbar — never show a blank side card.
+  if (!sections.length) return null;
 
   const active =
     sections.find(

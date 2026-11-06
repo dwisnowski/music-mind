@@ -24,6 +24,7 @@ Write mode ([ADR 0011](0011-sheet-music-write-mode.md)) supports step entry and 
 - Clip audition needs a lightweight timed player (notes + pedal CC), separate from OSMD Listen of the full draft.
 - Document/MusicXML gain velocity and pedal side channels; imperfect OSMD pedal display is acceptable if round-trip and Listen/player-piano can use the data.
 - User Free Practice riffs are client-only and genre-tagged; no cloud sync.
+- Tray chrome is opt-in by default per [ADR 0016](0016-write-ux-declutter.md); capture behavior is unchanged.
 
 ## Code anchors
 

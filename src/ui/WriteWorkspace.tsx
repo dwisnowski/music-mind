@@ -107,7 +107,8 @@ export function WriteWorkspace({
   const [draftsOpen, setDraftsOpen] = useState(false);
   const [libraryOpen, setLibraryOpen] = useState(false);
   const [formPickerOpen, setFormPickerOpen] = useState(false);
-  const [helperOpen, setHelperOpen] = useState(true);
+  const [helperOpen, setHelperOpen] = useState(false);
+  const [trayOpen, setTrayOpen] = useState(false);
   const [entryMode, setEntryMode] = useState<"step" | "record">("step");
   const [captureState, setCaptureState] = useState<CaptureState>("idle");
   const [gridQuarters, setGridQuarters] = useState(0.25);
@@ -499,41 +500,58 @@ export function WriteWorkspace({
           }
           aria-label="Score title"
         />
-        <button type="button" className="btn" onClick={startBlank}>
-          Blank
-        </button>
         <button type="button" className="btn primary" onClick={() => setFormPickerOpen(true)}>
           Song template
         </button>
-        <button type="button" className="btn" onClick={() => setLibraryOpen((v) => !v)}>
-          Open library
-        </button>
-        <label className="btn file-btn">
-          Open file
-          <input
-            type="file"
-            accept=".musicxml,.xml,.mxl"
-            hidden
-            onChange={(e) => void onLoadFile(e.target.files?.[0] ?? null)}
-          />
-        </label>
-        <button type="button" className="btn" onClick={() => setDraftsOpen((v) => !v)}>
-          Drafts
-        </button>
-        <button
-          type="button"
-          className="btn"
-          onClick={() => void downloadMusicXml(doc, false)}
-        >
-          Download
-        </button>
-        <button
-          type="button"
-          className="btn"
-          onClick={() => void downloadMusicXml(doc, true)}
-        >
-          Download .mxl
-        </button>
+        <details className="write-file-menu">
+          <summary className="btn">File</summary>
+          <div className="write-file-menu-panel" role="menu">
+            <button type="button" className="btn" role="menuitem" onClick={startBlank}>
+              Blank
+            </button>
+            <button
+              type="button"
+              className="btn"
+              role="menuitem"
+              onClick={() => setLibraryOpen((v) => !v)}
+            >
+              Open library
+            </button>
+            <label className="btn file-btn" role="menuitem">
+              Open file
+              <input
+                type="file"
+                accept=".musicxml,.xml,.mxl"
+                hidden
+                onChange={(e) => void onLoadFile(e.target.files?.[0] ?? null)}
+              />
+            </label>
+            <button
+              type="button"
+              className="btn"
+              role="menuitem"
+              onClick={() => setDraftsOpen((v) => !v)}
+            >
+              Drafts
+            </button>
+            <button
+              type="button"
+              className="btn"
+              role="menuitem"
+              onClick={() => void downloadMusicXml(doc, false)}
+            >
+              Download
+            </button>
+            <button
+              type="button"
+              className="btn"
+              role="menuitem"
+              onClick={() => void downloadMusicXml(doc, true)}
+            >
+              Download .mxl
+            </button>
+          </div>
+        </details>
         <button
           type="button"
           className="btn primary"
@@ -604,81 +622,93 @@ export function WriteWorkspace({
           </button>
         </div>
 
-        <div className="write-entry-transport">
-          <button
-            type="button"
-            className={`btn${entryMode === "step" && captureState === "idle" ? " primary" : ""}`}
-            onClick={() => {
-              if (captureState !== "idle") stopRecord();
-              setEntryMode("step");
+        <span className="write-tools-sep" aria-hidden="true" />
+
+        <button
+          type="button"
+          className={`btn${entryMode === "step" && captureState === "idle" ? " primary" : ""}`}
+          onClick={() => {
+            if (captureState !== "idle") stopRecord();
+            setEntryMode("step");
+          }}
+        >
+          Step
+        </button>
+        {captureState === "idle" ? (
+          <button type="button" className="btn" onClick={() => void startRecord()}>
+            Record
+          </button>
+        ) : (
+          <button type="button" className="btn primary listening" onClick={stopRecord}>
+            Stop ({captureState})
+          </button>
+        )}
+        <label className="field inline">
+          <span>Grid</span>
+          <select
+            value={String(gridQuarters)}
+            onChange={(e) => setGridQuarters(Number(e.target.value))}
+          >
+            <option value="1">Quarter</option>
+            <option value="0.5">Eighth</option>
+            <option value="0.25">16th</option>
+          </select>
+        </label>
+        <label className="field inline score-bpm">
+          <span>BPM</span>
+          <input
+            type="number"
+            min={40}
+            max={200}
+            value={listenBpm}
+            disabled={listenPlaying || captureState !== "idle"}
+            onChange={(e) => {
+              const bpm = Math.min(200, Math.max(40, Number(e.target.value) || 80));
+              onListenBpm(bpm);
+              stackRef.current.dispatch({ type: "setMeta", bpm });
             }}
-          >
-            Step entry
+          />
+        </label>
+        <button
+          type="button"
+          className={`btn ${listenMidiSound ? "active" : ""}`}
+          aria-pressed={listenMidiSound}
+          onClick={onToggleListenMidiSound}
+          title="Piano MIDI sound for Listen"
+        >
+          Piano sound
+        </button>
+        <button
+          type="button"
+          className={`btn primary ${listenPlaying ? "listening" : ""}`}
+          onClick={onPlayPause}
+        >
+          {listenPlaying ? "Pause" : "Play"}
+        </button>
+        {listenActive ? (
+          <button type="button" className="btn" onClick={onStopListen}>
+            Stop
           </button>
-          {captureState === "idle" ? (
-            <button type="button" className="btn" onClick={() => void startRecord()}>
-              Record
-            </button>
-          ) : (
-            <button type="button" className="btn primary listening" onClick={stopRecord}>
-              Stop record ({captureState})
-            </button>
-          )}
-          <label className="field inline">
-            <span>Grid</span>
-            <select
-              value={String(gridQuarters)}
-              onChange={(e) => setGridQuarters(Number(e.target.value))}
-            >
-              <option value="1">Quarter</option>
-              <option value="0.5">Eighth</option>
-              <option value="0.25">16th</option>
-            </select>
-          </label>
-          <label className="field inline score-bpm">
-            <span>BPM</span>
-            <input
-              type="number"
-              min={40}
-              max={200}
-              value={listenBpm}
-              disabled={listenPlaying || captureState !== "idle"}
-              onChange={(e) => {
-                const bpm = Math.min(200, Math.max(40, Number(e.target.value) || 80));
-                onListenBpm(bpm);
-                stackRef.current.dispatch({ type: "setMeta", bpm });
-              }}
-            />
-          </label>
-          <button
-            type="button"
-            className={`btn ${listenMidiSound ? "active" : ""}`}
-            aria-pressed={listenMidiSound}
-            onClick={onToggleListenMidiSound}
-            title="Piano MIDI sound for Listen"
-          >
-            Piano sound
-          </button>
-          <button
-            type="button"
-            className={`btn primary ${listenPlaying ? "listening" : ""}`}
-            onClick={onPlayPause}
-          >
-            {listenPlaying ? "Pause" : "Play"}
-          </button>
-          {listenActive ? (
-            <button type="button" className="btn" onClick={onStopListen}>
-              Stop
-            </button>
-          ) : null}
+        ) : null}
+        <button
+          type="button"
+          className={`btn${trayOpen || trayTakeActive ? " primary" : ""}`}
+          aria-pressed={trayOpen}
+          onClick={() => setTrayOpen((v) => !v)}
+          title="Keep and chop recent playing"
+        >
+          Riff tray
+        </button>
+        {doc.sections.length > 0 ? (
           <button
             type="button"
             className={`btn${helperOpen ? " primary" : ""}`}
+            aria-pressed={helperOpen}
             onClick={() => setHelperOpen((v) => !v)}
           >
             Form helper
           </button>
-        </div>
+        ) : null}
       </div>
 
       {showLyrics ? (
@@ -879,7 +909,11 @@ export function WriteWorkspace({
 
       <p className="write-status">{status}</p>
 
-      <div className={`write-body${helperOpen ? " with-helper" : ""} with-clip-tray`}>
+      <div
+        className={`write-body${trayOpen ? " with-clip-tray" : ""}${
+          helperOpen && doc.sections.length > 0 ? " with-helper" : ""
+        }`}
+      >
         <div className="write-score-pane">
           <ScoreView
             xml={xml}
@@ -905,28 +939,27 @@ export function WriteWorkspace({
             }}
           />
           <p className="muted write-cursor-hint">
-            Cursor: bar {doc.cursor.measureIndex + 1}, duration {doc.stepDuration}
-            {doc.selectionId ? ` · selected ${doc.selectionId}` : ""}
-            {doc.sections.length
-              ? ` · ${doc.sections.length} form section(s)`
-              : ""}
+            Bar {doc.cursor.measureIndex + 1} · {doc.stepDuration}
+            {doc.sections.length ? ` · ${doc.sections.length} sections` : ""}
           </p>
         </div>
-        <WriteClipTray
-          bpm={listenBpm}
-          gridQuarters={gridQuarters}
-          adapter={midiAdapter}
-          onKeepRecent={onKeepRecent}
-          takeActive={trayTakeActive}
-          onStartTake={onStartTake}
-          onStopTake={onStopTake}
-          alsoSaveRecordToTray={alsoSaveRecordToTray}
-          onAlsoSaveRecordToTray={setAlsoSaveRecordToTray}
-          onInsert={onInsertClip}
-          onStatus={setStatus}
-          reloadToken={clipReloadToken}
-        />
-        {helperOpen ? (
+        {trayOpen ? (
+          <WriteClipTray
+            bpm={listenBpm}
+            gridQuarters={gridQuarters}
+            adapter={midiAdapter}
+            onKeepRecent={onKeepRecent}
+            takeActive={trayTakeActive}
+            onStartTake={onStartTake}
+            onStopTake={onStopTake}
+            alsoSaveRecordToTray={alsoSaveRecordToTray}
+            onAlsoSaveRecordToTray={setAlsoSaveRecordToTray}
+            onInsert={onInsertClip}
+            onStatus={setStatus}
+            reloadToken={clipReloadToken}
+          />
+        ) : null}
+        {helperOpen && doc.sections.length > 0 ? (
           <SongFormHelper
             sections={doc.sections}
             currentMeasure={doc.cursor.measureIndex}

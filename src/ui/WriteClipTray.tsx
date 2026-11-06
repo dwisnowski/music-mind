@@ -62,6 +62,8 @@ export function WriteClipTray({
   const [fpOpen, setFpOpen] = useState(false);
   const [fpName, setFpName] = useState("");
   const [fpGenre, setFpGenre] = useState<GenreId>("pop");
+  /** Keep window: beats as `b:N` or seconds as `s:N`. */
+  const [keepWindow, setKeepWindow] = useState("b:8");
   const playerRef = useRef(new ClipPlayer());
 
   const selected = useMemo(
@@ -94,19 +96,20 @@ export function WriteClipTray({
     setSelectedId(clip.id);
   };
 
-  const keepRecent = async (sec: number) => {
+  const runKeepWindow = async () => {
+    const [kind, raw] = keepWindow.split(":");
+    const n = Number(raw);
+    if (!Number.isFinite(n) || n <= 0) return;
+    const sec = kind === "b" ? (n * 60) / Math.max(40, bpm) : n;
     const clip = onKeepRecent(sec);
     if (!clip) {
       onStatus("Nothing in the recent buffer to keep.");
       return;
     }
     await persist(clip);
-    onStatus(`Kept “${clip.name}” (${sec}s).`);
-  };
-
-  const keepBeats = async (beats: number) => {
-    const sec = (beats * 60) / Math.max(40, bpm);
-    await keepRecent(sec);
+    onStatus(
+      `Kept “${clip.name}” (${kind === "b" ? `${n} beats` : `${n}s`}).`,
+    );
   };
 
   const toggleTake = () => {
@@ -197,28 +200,41 @@ export function WriteClipTray({
   return (
     <aside className="write-clip-tray" aria-label="Riff clip tray">
       <div className="write-clip-tray-header">
-        <h3>Riff tray</h3>
-        <span className="muted">Rolling buffer · chop · keep</span>
+        <div>
+          <h3>Riff tray</h3>
+          <span className="muted">Play, then keep what you like</span>
+        </div>
+        <details className="write-clip-more">
+          <summary className="btn ghost" title="More options">
+            …
+          </summary>
+          <div className="write-clip-more-panel">
+            <label className="field inline write-clip-also-save">
+              <input
+                type="checkbox"
+                checked={alsoSaveRecordToTray}
+                onChange={(e) => onAlsoSaveRecordToTray(e.target.checked)}
+              />
+              <span>Also save Record takes here</span>
+            </label>
+          </div>
+        </details>
       </div>
 
       <div className="write-clip-tray-actions">
-        <button type="button" className="btn" onClick={() => void keepBeats(4)}>
-          Keep 4 beats
-        </button>
-        <button type="button" className="btn" onClick={() => void keepBeats(8)}>
-          Keep 8 beats
-        </button>
-        <button type="button" className="btn" onClick={() => void keepBeats(16)}>
-          Keep 16 beats
-        </button>
-        <button type="button" className="btn" onClick={() => void keepRecent(8)}>
-          Keep 8s
-        </button>
-        <button type="button" className="btn" onClick={() => void keepRecent(15)}>
-          Keep 15s
-        </button>
-        <button type="button" className="btn" onClick={() => void keepRecent(30)}>
-          Keep 30s
+        <label className="field inline write-clip-keep">
+          <span>Keep</span>
+          <select value={keepWindow} onChange={(e) => setKeepWindow(e.target.value)}>
+            <option value="b:4">Last 4 beats</option>
+            <option value="b:8">Last 8 beats</option>
+            <option value="b:16">Last 16 beats</option>
+            <option value="s:8">Last 8s</option>
+            <option value="s:15">Last 15s</option>
+            <option value="s:30">Last 30s</option>
+          </select>
+        </label>
+        <button type="button" className="btn" onClick={() => void runKeepWindow()}>
+          Keep
         </button>
         <button
           type="button"
@@ -229,18 +245,9 @@ export function WriteClipTray({
         </button>
       </div>
 
-      <label className="field inline write-clip-also-save">
-        <input
-          type="checkbox"
-          checked={alsoSaveRecordToTray}
-          onChange={(e) => onAlsoSaveRecordToTray(e.target.checked)}
-        />
-        <span>Also save Record takes to tray</span>
-      </label>
-
       <ul className="write-clip-list" role="list">
         {clips.length === 0 ? (
-          <li className="muted">No clips yet — play, then Keep recent or Capture take.</li>
+          <li className="muted">No clips yet — play, then Keep or Capture take.</li>
         ) : (
           clips.map((c) => (
             <li key={c.id}>

@@ -26,6 +26,7 @@ Music Mind today loads MusicXML for Feedback practice and Listen playback ([ADR 
 - Write and Practice share Listen transport patterns but not Feedback state.
 - Song templates scaffold structure and prompts only — they do not auto-compose melody or harmony.
 - Hybrid riff capture (rolling buffer + clip tray, velocity/pedal) is specified in [ADR 0015](0015-write-riff-clip-tray.md).
+- Score-first chrome declutter (opt-in panels, File menu) is specified in [ADR 0016](0016-write-ux-declutter.md).
 
 ## Code anchors
 

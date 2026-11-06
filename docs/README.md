@@ -25,3 +25,4 @@ Architecture decisions and project notes for Music Mind.
 - [0013 – Home and Library pages](adr/0013-home-and-library-pages.md) — Dedicated `home` landing with particle wordmark; Library holds score browse/load; Games/Free Practice/Write mode group; Settings gear
 - [0014 – Multi-piano Bluetooth MIDI](adr/0014-multi-piano-bluetooth-midi.md) — Williams + Roland FP-60X; safe I/O pairing; light emission gated by family; top-bar connection indicator
 - [0015 – Write riff clip tray](adr/0015-write-riff-clip-tray.md) — Hybrid rolling buffer + clip tray in Write; velocity + pedal retained; insert into score; optional Free Practice user riffs (extends 0011 / 0012)
+- [0016 – Write UX declutter](adr/0016-write-ux-declutter.md) — Score-first Write chrome; no empty form panel; opt-in riff tray; File menu for secondary actions (extends 0011 / 0015)
