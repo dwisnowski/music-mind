@@ -5,6 +5,9 @@ import { SongFormPicker } from "./SongFormPicker";
 import { LibraryBrowser } from "./LibraryBrowser";
 import {
   CaptureSession,
+  DOCK_DEFAULT_VELOCITY,
+  RollingMidiBuffer,
+  createClip,
   type CaptureState,
   WriteCommandStack,
   createBlankDocument,
@@ -15,21 +18,27 @@ import {
   fromMusicXml,
   listDrafts,
   presetToSections,
+  saveClip,
   saveDraft,
   toMusicXml,
   type ArticulationId,
   type DurationId,
   type DynamicId,
+  type WriteClip,
   type WriteComplexity,
   type WriteDocument,
   type WriteDraftRecord,
 } from "../write";
+import { velocityToDynamics } from "../write/quantize";
 import { parseMusicXmlTimeline } from "../score/parseMusicXmlTimeline";
 import { readScoreFile } from "../score/loadMusicXml";
 import type { LoadedScore } from "../score/types";
 import type { SampleScore } from "../score/samples";
 import type { FeedbackState } from "../practice/feedbackEngine";
 import type { SongFormPreset, SongFormSectionDef } from "../write/songForms";
+import type { MidiAdapter } from "../midi/types";
+import { isPedalController } from "../midi/types";
+import { WriteClipTray, mergePayloadFromClip } from "./WriteClipTray";
 
 const DURATION_BUTTONS: { id: DurationId; label: string }[] = [
   { id: "1", label: "1" },
@@ -57,12 +66,14 @@ export interface WriteWorkspaceProps {
   onLoadedScoreChange: (score: LoadedScore | null) => void;
   onOpenInPractice: (score: LoadedScore) => void;
   onExit: () => void;
-  /** Wired from App MIDI / piano — step or record. */
+  /** Wired from App MIDI / piano — step or record (+ velocity / pedal). */
   noteSinkRef: MutableRefObject<{
-    noteOn: (midi: number, timestamp?: number) => void;
-    noteOff: (midi: number, timestamp?: number) => void;
+    noteOn: (midi: number, timestamp?: number, velocity?: number) => void;
+    noteOff: (midi: number, timestamp?: number, velocity?: number) => void;
+    controlChange?: (controller: number, value: number, timestamp?: number) => void;
   } | null>;
   feedbackPlaceholder: FeedbackState | null;
+  midiAdapter?: MidiAdapter | null;
 }
 
 export function WriteWorkspace({
@@ -82,6 +93,7 @@ export function WriteWorkspace({
   onExit,
   noteSinkRef,
   feedbackPlaceholder,
+  midiAdapter = null,
 }: WriteWorkspaceProps) {
   const initialDoc = useMemo(() => createBlankDocument({ bars: 8 }), []);
   const stackRef = useRef<WriteCommandStack>(null!);
@@ -102,7 +114,12 @@ export function WriteWorkspace({
   const [status, setStatus] = useState("Play notes to write, or choose a song template.");
   const [lyricDraft, setLyricDraft] = useState("");
   const [loadingSampleId, setLoadingSampleId] = useState<string | null>(null);
+  const [trayTakeActive, setTrayTakeActive] = useState(false);
+  const [alsoSaveRecordToTray, setAlsoSaveRecordToTray] = useState(false);
+  const [clipReloadToken, setClipReloadToken] = useState(0);
   const captureRef = useRef(new CaptureSession());
+  const trayTakeRef = useRef(new CaptureSession());
+  const bufferRef = useRef(new RollingMidiBuffer());
   const chordBufRef = useRef<{ midis: number[]; timer: number | null }>({
     midis: [],
     timer: null,
@@ -111,6 +128,14 @@ export function WriteWorkspace({
   useEffect(() => {
     docRef.current = doc;
   }, [doc]);
+
+  useEffect(() => {
+    return () => {
+      bufferRef.current.clear();
+      if (captureRef.current.getStatus() !== "idle") captureRef.current.stopRaw();
+      if (trayTakeRef.current.getStatus() !== "idle") trayTakeRef.current.stopRaw();
+    };
+  }, []);
 
   const refreshXml = useCallback((d: WriteDocument) => {
     const nextXml = toMusicXml(d);
@@ -175,9 +200,16 @@ export function WriteWorkspace({
   }, []);
 
   const handleNoteOn = useCallback(
-    (midi: number, timestamp?: number) => {
+    (midi: number, timestamp?: number, velocity?: number) => {
+      const vel = velocity ?? DOCK_DEFAULT_VELOCITY;
+      const absMs =
+        timestamp != null && timestamp > 1000 ? timestamp : performance.now();
+      bufferRef.current.pushNote("on", midi, vel, absMs);
+      if (trayTakeRef.current.getStatus() === "recording") {
+        trayTakeRef.current.noteOn(midi, timestamp, vel);
+      }
       if (entryMode === "record") {
-        captureRef.current.noteOn(midi, timestamp);
+        captureRef.current.noteOn(midi, timestamp, vel);
         return;
       }
       const buf = chordBufRef.current;
@@ -189,20 +221,46 @@ export function WriteWorkspace({
   );
 
   const handleNoteOff = useCallback(
-    (midi: number, timestamp?: number) => {
+    (midi: number, timestamp?: number, velocity?: number) => {
+      const absMs =
+        timestamp != null && timestamp > 1000 ? timestamp : performance.now();
+      bufferRef.current.pushNote("off", midi, velocity, absMs);
+      if (trayTakeRef.current.getStatus() === "recording") {
+        trayTakeRef.current.noteOff(midi, timestamp, velocity);
+      }
       if (entryMode === "record") {
-        captureRef.current.noteOff(midi, timestamp);
+        captureRef.current.noteOff(midi, timestamp, velocity);
+      }
+    },
+    [entryMode],
+  );
+
+  const handleControlChange = useCallback(
+    (controller: number, value: number, timestamp?: number) => {
+      if (!isPedalController(controller)) return;
+      const absMs =
+        timestamp != null && timestamp > 1000 ? timestamp : performance.now();
+      bufferRef.current.pushCc(controller, value, absMs);
+      if (trayTakeRef.current.getStatus() === "recording") {
+        trayTakeRef.current.controlChange(controller, value, timestamp);
+      }
+      if (entryMode === "record") {
+        captureRef.current.controlChange(controller, value, timestamp);
       }
     },
     [entryMode],
   );
 
   useEffect(() => {
-    noteSinkRef.current = { noteOn: handleNoteOn, noteOff: handleNoteOff };
+    noteSinkRef.current = {
+      noteOn: handleNoteOn,
+      noteOff: handleNoteOff,
+      controlChange: handleControlChange,
+    };
     return () => {
       noteSinkRef.current = null;
     };
-  }, [noteSinkRef, handleNoteOn, handleNoteOff]);
+  }, [noteSinkRef, handleNoteOn, handleNoteOff, handleControlChange]);
 
   const reloadDrafts = useCallback(async () => {
     try {
@@ -257,21 +315,94 @@ export function WriteWorkspace({
   };
 
   const stopRecord = () => {
-    const collapsed = captureRef.current.stopCollapsed();
+    const result = captureRef.current.stopCollapsed();
     setCaptureState("idle");
-    if (!collapsed.length) {
+    if (!result.collapsed.length && !result.pedals.length) {
       setStatus("Nothing recorded.");
       setEntryMode("step");
       return;
     }
+    const notes = result.collapsed.map((n) => ({
+      ...n,
+      dynamics: velocityToDynamics(n.velocity),
+    }));
     stackRef.current.dispatch({
       type: "mergeRecorded",
-      notes: collapsed,
+      notes,
+      pedals: result.pedals,
       fromMeasure: docRef.current.cursor.measureIndex,
     });
-    setStatus(`Merged ${collapsed.length} quantized event(s).`);
+    if (alsoSaveRecordToTray && result.events.length) {
+      const clip = createClip({
+        bpm: listenBpm,
+        gridQuarters,
+        events: result.events,
+        name: `Record ${new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}`,
+      });
+      void saveClip(clip)
+        .then(() => setClipReloadToken((n) => n + 1))
+        .catch(() => {
+          /* ignore */
+        });
+    }
+    setStatus(
+      `Merged ${result.collapsed.length} quantized event(s)` +
+        (result.pedals.length ? ` · ${result.pedals.length} pedal mark(s)` : "") +
+        ".",
+    );
     setEntryMode("step");
   };
+
+  const onKeepRecent = useCallback(
+    (sec: number): WriteClip | null => {
+      const events = bufferRef.current.sliceLast(sec);
+      if (!events.length) return null;
+      return createClip({ bpm: listenBpm, gridQuarters, events });
+    },
+    [listenBpm, gridQuarters],
+  );
+
+  const onStartTake = useCallback(() => {
+    setTrayTakeActive(true);
+    void trayTakeRef.current.start({
+      bpm: listenBpm,
+      gridQuarters,
+      countInBeats: 0,
+      metronome: false,
+      onState: (s) => {
+        if (s === "idle") setTrayTakeActive(false);
+      },
+    });
+  }, [listenBpm, gridQuarters]);
+
+  const onStopTake = useCallback((): WriteClip | null => {
+    const events = trayTakeRef.current.stopRaw();
+    setTrayTakeActive(false);
+    if (!events.length) return null;
+    return createClip({ bpm: listenBpm, gridQuarters, events });
+  }, [listenBpm, gridQuarters]);
+
+  const onInsertClip = useCallback(
+    (clip: WriteClip) => {
+      const { notes, pedals } = mergePayloadFromClip(clip, listenBpm, gridQuarters);
+      if (!notes.length && !pedals.length) {
+        setStatus("Clip has nothing to insert after quantize.");
+        return;
+      }
+      stackRef.current.dispatch({
+        type: "mergeRecorded",
+        notes,
+        pedals,
+        fromMeasure: docRef.current.cursor.measureIndex,
+      });
+      setStatus(
+        `Inserted “${clip.name}” (${notes.length} event(s)` +
+          (pedals.length ? `, ${pedals.length} pedal(s)` : "") +
+          ").",
+      );
+    },
+    [listenBpm, gridQuarters],
+  );
 
   const openDraft = (record: WriteDraftRecord) => {
     const d = draftToDocument(record);
@@ -748,7 +879,7 @@ export function WriteWorkspace({
 
       <p className="write-status">{status}</p>
 
-      <div className={`write-body${helperOpen ? " with-helper" : ""}`}>
+      <div className={`write-body${helperOpen ? " with-helper" : ""} with-clip-tray`}>
         <div className="write-score-pane">
           <ScoreView
             xml={xml}
@@ -781,6 +912,20 @@ export function WriteWorkspace({
               : ""}
           </p>
         </div>
+        <WriteClipTray
+          bpm={listenBpm}
+          gridQuarters={gridQuarters}
+          adapter={midiAdapter}
+          onKeepRecent={onKeepRecent}
+          takeActive={trayTakeActive}
+          onStartTake={onStartTake}
+          onStopTake={onStopTake}
+          alsoSaveRecordToTray={alsoSaveRecordToTray}
+          onAlsoSaveRecordToTray={setAlsoSaveRecordToTray}
+          onInsert={onInsertClip}
+          onStatus={setStatus}
+          reloadToken={clipReloadToken}
+        />
         {helperOpen ? (
           <SongFormHelper
             sections={doc.sections}

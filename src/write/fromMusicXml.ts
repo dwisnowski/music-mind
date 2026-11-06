@@ -11,6 +11,7 @@ import {
   type WriteLyric,
   type WriteMeasure,
   type WriteNote,
+  type WritePedalMark,
   type WritePitch,
 } from "./document";
 import { extractTitleFromXml } from "../score/loadMusicXml";
@@ -135,6 +136,18 @@ export function fromMusicXml(xml: string, fileName?: string): WriteDocument {
             if (last) last.dynamics = dynName;
           }
         }
+        const pedalEl = el.querySelector("pedal");
+        if (pedalEl) {
+          const pedalType = (pedalEl.getAttribute("type") ?? "start") as WritePedalMark["type"];
+          const offsetDiv = Number(el.querySelector("offset")?.textContent ?? 0);
+          const onsetQuarters = divisions > 0 ? offsetDiv / divisions : 0;
+          measure.pedals = measure.pedals ?? [];
+          measure.pedals.push({
+            onsetQuarters,
+            type: pedalType === "stop" || pedalType === "change" ? pedalType : "start",
+            controller: 64,
+          });
+        }
         continue;
       }
 
@@ -194,6 +207,15 @@ export function fromMusicXml(xml: string, fileName?: string): WriteDocument {
         continue;
       }
 
+      const soundDyn = el.querySelector("sound")?.getAttribute("dynamics");
+      let velocity: number | undefined;
+      if (soundDyn != null && soundDyn !== "") {
+        const pct = Number(soundDyn);
+        if (Number.isFinite(pct)) {
+          velocity = Math.max(1, Math.min(127, Math.round((pct / 100) * 90)));
+        }
+      }
+
       const note: WriteNote = {
         id: newNoteId(),
         kind: isRest || !pitch ? "rest" : "note",
@@ -206,6 +228,7 @@ export function fromMusicXml(xml: string, fileName?: string): WriteDocument {
         articulations: articulationsFrom(el),
         beam: beam === "begin" || beam === "continue" || beam === "end" ? beam : undefined,
         tuplet,
+        velocity,
       };
 
       const vKey = `${staffIndex}:${voice}`;

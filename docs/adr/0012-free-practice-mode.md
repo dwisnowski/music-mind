@@ -25,6 +25,7 @@ Music Mind’s Feedback practice ([ADR 0001](0001-mvp-practice-architecture.md))
 - Lighting many scale notes can flood MIDI; the 3-octave window is an intentional cap until multi-color SysEx exists.
 - Free Practice does not grade tempo or award session scores; guided advance is pitch-order only (same spirit as Feedback wait-for-me).
 - Theory blurbs are pedagogical shortcuts, not a full curriculum.
+- User-saved absolute-MIDI riffs from Write clips are specified in [ADR 0015](0015-write-riff-clip-tray.md); they sit beside the built-in degree catalog.
 
 ## Code anchors
 

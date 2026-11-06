@@ -25,6 +25,7 @@ Music Mind today loads MusicXML for Feedback practice and Listen playback ([ADR 
 - MusicXML round-trip quality limits advanced markings; imperfect import from arbitrary library files is acceptable if playable notes survive.
 - Write and Practice share Listen transport patterns but not Feedback state.
 - Song templates scaffold structure and prompts only — they do not auto-compose melody or harmony.
+- Hybrid riff capture (rolling buffer + clip tray, velocity/pedal) is specified in [ADR 0015](0015-write-riff-clip-tray.md).
 
 ## Code anchors
 

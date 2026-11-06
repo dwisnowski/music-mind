@@ -25,22 +25,41 @@ export interface ParsedMidiNote {
   channel: number;
 }
 
-export function parseMidiMessage(data: Uint8Array): ParsedMidiNote | null {
+export interface ParsedMidiCc {
+  type: "cc";
+  controller: number;
+  value: number;
+  channel: number;
+}
+
+export type ParsedMidiMessage = ParsedMidiNote | ParsedMidiCc;
+
+/** Sustain, sostenuto, soft pedals. */
+export const PEDAL_CONTROLLERS = new Set([64, 66, 67]);
+
+export function isPedalController(controller: number): boolean {
+  return PEDAL_CONTROLLERS.has(controller);
+}
+
+export function parseMidiMessage(data: Uint8Array): ParsedMidiMessage | null {
   if (data.length < 2) return null;
   const status = data[0]!;
   const command = status & 0xf0;
   const channel = status & 0x0f;
-  const note = data[1]!;
-  const velocity = data.length > 2 ? data[2]! : 0;
+  const data1 = data[1]!;
+  const data2 = data.length > 2 ? data[2]! : 0;
 
   if (command === 0x90) {
-    if (velocity > 0) {
-      return { type: "noteon", note, velocity, channel };
+    if (data2 > 0) {
+      return { type: "noteon", note: data1, velocity: data2, channel };
     }
-    return { type: "noteoff", note, velocity: 0, channel };
+    return { type: "noteoff", note: data1, velocity: 0, channel };
   }
   if (command === 0x80) {
-    return { type: "noteoff", note, velocity, channel };
+    return { type: "noteoff", note: data1, velocity: data2, channel };
+  }
+  if (command === 0xb0) {
+    return { type: "cc", controller: data1, value: data2, channel };
   }
   return null;
 }

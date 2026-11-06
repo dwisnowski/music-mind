@@ -24,3 +24,4 @@ Architecture decisions and project notes for Music Mind.
 - [0012 – Free Practice mode](adr/0012-free-practice-mode.md) — Genre scales/riffs as melodic helpers; Free scale map + Guided call-and-response; diatonic chords, live intervals, circle of fifths; Williams + on-screen lights
 - [0013 – Home and Library pages](adr/0013-home-and-library-pages.md) — Dedicated `home` landing with particle wordmark; Library holds score browse/load; Games/Free Practice/Write mode group; Settings gear
 - [0014 – Multi-piano Bluetooth MIDI](adr/0014-multi-piano-bluetooth-midi.md) — Williams + Roland FP-60X; safe I/O pairing; light emission gated by family; top-bar connection indicator
+- [0015 – Write riff clip tray](adr/0015-write-riff-clip-tray.md) — Hybrid rolling buffer + clip tray in Write; velocity + pedal retained; insert into score; optional Free Practice user riffs (extends 0011 / 0012)

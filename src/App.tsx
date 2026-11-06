@@ -69,6 +69,12 @@ import {
   type GenreId,
   type ScaleId,
 } from "./theory";
+import {
+  getUserRiff,
+  isUserRiffId,
+  listUserRiffs,
+  type UserRiff,
+} from "./theory/userRiffStore";
 
 const DOCK_PIN_KEY = "music-mind-dock-pinned";
 const PIANO_CONTROLS_KEY = "mm.pianoControls";
@@ -143,8 +149,9 @@ export default function App() {
   const scoreRef = useRef<LoadedScore | null>(null);
   const writeScoreRef = useRef<LoadedScore | null>(null);
   const writeNoteSinkRef = useRef<{
-    noteOn: (midi: number, timestamp?: number) => void;
-    noteOff: (midi: number, timestamp?: number) => void;
+    noteOn: (midi: number, timestamp?: number, velocity?: number) => void;
+    noteOff: (midi: number, timestamp?: number, velocity?: number) => void;
+    controlChange?: (controller: number, value: number, timestamp?: number) => void;
   } | null>(null);
   const [writeScore, setWriteScore] = useState<LoadedScore | null>(null);
   const [writeInitialXml, setWriteInitialXml] = useState<string | null>(null);
@@ -191,6 +198,7 @@ export default function App() {
   const [fpPlayMode, setFpPlayMode] = useState<FreePracticePlayMode>("free");
   const [fpChordKey, setFpChordKey] = useState<string | null>(null);
   const [fpRiffId, setFpRiffId] = useState<string | null>(null);
+  const [fpUserRiffs, setFpUserRiffs] = useState<UserRiff[]>([]);
   const [fpTheoryTab, setFpTheoryTab] = useState<TheoryTab>("chords");
 
   const closePianoControlsHelp = useCallback(() => {
@@ -294,11 +302,17 @@ export default function App() {
       return a.onMessage((data, timestamp) => {
         const msg = parseMidiMessage(data);
         if (!msg) return;
+        if (msg.type === "cc") {
+          if (appModeRef.current === "write") {
+            writeNoteSinkRef.current?.controlChange?.(msg.controller, msg.value, timestamp);
+          }
+          return;
+        }
         if (msg.type === "noteon") {
           if (appModeRef.current === "write") {
             heardRef.current.add(msg.note);
             setHeard(new Set(heardRef.current));
-            writeNoteSinkRef.current?.noteOn(msg.note, timestamp);
+            writeNoteSinkRef.current?.noteOn(msg.note, timestamp, msg.velocity);
             return;
           }
           if (appModeRef.current === "freePractice") {
@@ -335,7 +349,7 @@ export default function App() {
           if (appModeRef.current === "write") {
             heardRef.current.delete(msg.note);
             setHeard(new Set(heardRef.current));
-            writeNoteSinkRef.current?.noteOff(msg.note, timestamp);
+            writeNoteSinkRef.current?.noteOff(msg.note, timestamp, msg.velocity);
             return;
           }
           if (appModeRef.current === "freePractice") {
@@ -782,6 +796,32 @@ export default function App() {
     freePracticeRef.current.clear();
   }, []);
 
+  const resolveFpPhrase = useCallback(
+    async (id: string): Promise<number[] | null> => {
+      if (isUserRiffId(id)) {
+        const user = await getUserRiff(id);
+        return user?.midis?.length ? [...user.midis] : null;
+      }
+      const riff = getRiff(id);
+      if (!riff) return null;
+      return resolveRiffMidis(riff, fpRootPc, fpScaleId);
+    },
+    [fpRootPc, fpScaleId],
+  );
+
+  const reloadFpUserRiffs = useCallback(async (genreId: GenreId) => {
+    try {
+      setFpUserRiffs(await listUserRiffs(genreId));
+    } catch {
+      setFpUserRiffs([]);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (!freePracticeActive) return;
+    void reloadFpUserRiffs(fpGenreId);
+  }, [freePracticeActive, fpGenreId, reloadFpUserRiffs]);
+
   const onFpRiffId = useCallback(
     (id: string | null) => {
       setFpRiffId(id);
@@ -789,12 +829,23 @@ export default function App() {
         freePracticeRef.current.clear();
         return;
       }
-      const riff = getRiff(id);
-      if (!riff) return;
-      setFpScaleId(riff.scaleId);
-      if (fpPlayMode === "guided") {
-        freePracticeRef.current.loadPhrase(resolveRiffMidis(riff, fpRootPc, riff.scaleId));
+      if (!isUserRiffId(id)) {
+        const riff = getRiff(id);
+        if (!riff) return;
+        setFpScaleId(riff.scaleId);
+        if (fpPlayMode === "guided") {
+          freePracticeRef.current.loadPhrase(resolveRiffMidis(riff, fpRootPc, riff.scaleId));
+        }
+        return;
       }
+      void (async () => {
+        const user = await getUserRiff(id);
+        if (!user) return;
+        setFpScaleId(user.scaleId);
+        if (fpPlayMode === "guided" && user.midis.length) {
+          freePracticeRef.current.loadPhrase([...user.midis]);
+        }
+      })();
     },
     [fpPlayMode, fpRootPc],
   );
@@ -807,21 +858,20 @@ export default function App() {
         return;
       }
       if (fpRiffId) {
-        const riff = getRiff(fpRiffId);
-        if (riff) {
-          freePracticeRef.current.loadPhrase(resolveRiffMidis(riff, fpRootPc, fpScaleId));
-        }
+        void resolveFpPhrase(fpRiffId).then((midis) => {
+          if (midis) freePracticeRef.current.loadPhrase(midis);
+        });
       }
     },
-    [fpRiffId, fpRootPc, fpScaleId],
+    [fpRiffId, resolveFpPhrase],
   );
 
   const onFpDemo = useCallback(() => {
     if (!fpRiffId) return;
-    const riff = getRiff(fpRiffId);
-    if (!riff) return;
-    freePracticeRef.current.startDemo(resolveRiffMidis(riff, fpRootPc, fpScaleId));
-  }, [fpRiffId, fpRootPc, fpScaleId]);
+    void resolveFpPhrase(fpRiffId).then((midis) => {
+      if (midis) freePracticeRef.current.startDemo(midis);
+    });
+  }, [fpRiffId, resolveFpPhrase]);
 
   const onFpRestartGuided = useCallback(() => {
     freePracticeRef.current.restart();
@@ -830,10 +880,10 @@ export default function App() {
   // Keep guided phrase in sync when root/scale change with a riff selected.
   useEffect(() => {
     if (!freePracticeActive || fpPlayMode !== "guided" || !fpRiffId) return;
-    const riff = getRiff(fpRiffId);
-    if (!riff) return;
-    freePracticeRef.current.loadPhrase(resolveRiffMidis(riff, fpRootPc, fpScaleId));
-  }, [freePracticeActive, fpPlayMode, fpRiffId, fpRootPc, fpScaleId]);
+    void resolveFpPhrase(fpRiffId).then((midis) => {
+      if (midis) freePracticeRef.current.loadPhrase(midis);
+    });
+  }, [freePracticeActive, fpPlayMode, fpRiffId, resolveFpPhrase]);
 
   const exitWrite = useCallback(() => {
     playerRef.current.stop({ emitEnded: false });
@@ -1032,9 +1082,9 @@ export default function App() {
       }
       heardRef.current.add(midi);
       setHeard(new Set(heardRef.current));
-      writeNoteSinkRef.current?.noteOn(midi);
+      writeNoteSinkRef.current?.noteOn(midi, undefined, 80);
       window.setTimeout(() => {
-        writeNoteSinkRef.current?.noteOff(midi);
+        writeNoteSinkRef.current?.noteOff(midi, undefined, 0);
         heardRef.current.delete(midi);
         setHeard(new Set(heardRef.current));
       }, 120);
@@ -1323,6 +1373,7 @@ export default function App() {
             onExit={exitWrite}
             noteSinkRef={writeNoteSinkRef}
             feedbackPlaceholder={null}
+            midiAdapter={adapter}
           />
         ) : appMode === "freePractice" ? (
           <FreePracticeWorkspace
@@ -1332,6 +1383,7 @@ export default function App() {
             playMode={fpPlayMode}
             chordKey={fpChordKey}
             riffId={fpRiffId}
+            userRiffs={fpUserRiffs}
             theoryTab={fpTheoryTab}
             heldMidis={heard}
             guided={fpSnap}

@@ -45,6 +45,14 @@ export type WriteCommand =
         onsetQuarters: number;
         durationQuarters: number;
         staffIndex: number;
+        velocity?: number;
+        dynamics?: DynamicId;
+      }[];
+      pedals?: {
+        onsetQuarters: number;
+        type: "start" | "stop" | "change";
+        controller: number;
+        value?: number;
       }[];
       fromMeasure: number;
     };
@@ -429,6 +437,8 @@ export function applyCommand(doc: WriteDocument, cmd: WriteCommand): WriteDocume
           durationQuarters: r.durationQuarters,
           staffIndex: r.staffIndex,
           voice: r.staffIndex === 0 ? 1 : 2,
+          velocity: r.velocity,
+          dynamics: r.dynamics,
         });
         byMeasure.set(mi, list);
         measureIndex = Math.max(measureIndex, mi);
@@ -437,6 +447,30 @@ export function applyCommand(doc: WriteDocument, cmd: WriteCommand): WriteDocume
         const m = doc.measures[mi];
         if (!m) continue;
         m.notes.push(...notes);
+      }
+      if (cmd.pedals?.length) {
+        for (const p of cmd.pedals) {
+          let mi = cmd.fromMeasure;
+          let onset = p.onsetQuarters;
+          while (mi < doc.measures.length) {
+            const cap = measureCapacityQuarters(doc, mi);
+            if (onset < cap - 1e-9) break;
+            onset -= cap;
+            mi += 1;
+            if (mi >= doc.measures.length) doc.measures.push(createEmptyMeasure(mi));
+          }
+          if (mi >= doc.measures.length) doc.measures.push(createEmptyMeasure(mi));
+          const m = doc.measures[mi];
+          if (!m) continue;
+          m.pedals = m.pedals ?? [];
+          m.pedals.push({
+            onsetQuarters: onset,
+            type: p.type,
+            controller: p.controller,
+            value: p.value,
+          });
+          measureIndex = Math.max(measureIndex, mi);
+        }
       }
       doc.cursor.measureIndex = measureIndex;
       return doc;

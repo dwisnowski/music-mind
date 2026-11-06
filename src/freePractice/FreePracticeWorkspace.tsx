@@ -15,6 +15,7 @@ import {
 } from "../theory";
 import type { FreePracticePlayMode, TheoryTab } from "./types";
 import type { FreePracticeSnapshot } from "./FreePracticeEngine";
+import type { UserRiff } from "../theory/userRiffStore";
 
 export interface FreePracticeWorkspaceProps {
   genreId: GenreId;
@@ -23,6 +24,7 @@ export interface FreePracticeWorkspaceProps {
   playMode: FreePracticePlayMode;
   chordKey: string | null;
   riffId: string | null;
+  userRiffs: UserRiff[];
   theoryTab: TheoryTab;
   heldMidis: ReadonlySet<number>;
   guided: FreePracticeSnapshot;
@@ -49,6 +51,7 @@ export function FreePracticeWorkspace({
   playMode,
   chordKey,
   riffId,
+  userRiffs,
   theoryTab,
   heldMidis,
   guided,
@@ -70,7 +73,16 @@ export function FreePracticeWorkspace({
     [chords, chordKey],
   );
   const riffs = useMemo(() => riffsForGenre(genreId), [genreId]);
-  const activeRiff = riffId ? getRiff(riffId) : undefined;
+  const catalogRiff = riffId ? getRiff(riffId) : undefined;
+  const userRiff = riffId ? userRiffs.find((r) => r.id === riffId) : undefined;
+  const activeRiff = catalogRiff
+    ? { name: catalogRiff.name, description: catalogRiff.description }
+    : userRiff
+      ? {
+          name: userRiff.name,
+          description: `Saved riff · ${userRiff.midis.length} notes (absolute pitches).`,
+        }
+      : undefined;
   const intervals = useMemo(() => classifyHeld(heldMidis), [heldMidis]);
   const circle = useMemo(() => circleView(rootPc), [rootPc]);
 
@@ -191,6 +203,25 @@ export function FreePracticeWorkspace({
               </button>
             ))}
           </div>
+          {userRiffs.length ? (
+            <div className="free-practice-saved-riffs">
+              <span className="muted">Saved</span>
+              <div className="free-practice-riff-list" role="list">
+                {userRiffs.map((r) => (
+                  <button
+                    key={r.id}
+                    type="button"
+                    role="listitem"
+                    className={`btn${riffId === r.id ? " primary" : ""}`}
+                    onClick={() => onRiffId(r.id)}
+                    title={`${r.midis.length} notes`}
+                  >
+                    {r.name}
+                  </button>
+                ))}
+              </div>
+            </div>
+          ) : null}
           <div className="free-practice-riff-actions">
             <button
               type="button"

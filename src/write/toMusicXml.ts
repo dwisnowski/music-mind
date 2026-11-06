@@ -73,6 +73,11 @@ function noteXml(note: WriteNote, divisions: number, isChordTone: boolean): stri
     parts.push(`          <text>${esc(note.lyric.text)}</text>`);
     parts.push("        </lyric>");
   }
+  // MusicXML sound/@dynamics ≈ percent of forte (MIDI 90). Preserve numeric velocity.
+  if (note.velocity != null && note.velocity > 0) {
+    const dynPct = Math.max(1, Math.min(200, Math.round((note.velocity / 90) * 100)));
+    parts.push(`        <sound dynamics="${dynPct}"/>`);
+  }
   parts.push("      </note>");
   return parts.join("\n");
 }
@@ -156,6 +161,23 @@ function measureXml(measure: WriteMeasure, doc: WriteDocument, isFirst: boolean)
     lines.push(`          <rehearsal>${esc(measure.rehearsal)}</rehearsal>`);
     lines.push("        </direction-type>");
     lines.push("      </direction>");
+  }
+
+  // Pedal directions at measure onset (approximate; OSMD may show sustain marks).
+  if (measure.pedals?.length) {
+    const sorted = [...measure.pedals].sort((a, b) => a.onsetQuarters - b.onsetQuarters);
+    for (const p of sorted) {
+      const pedalType = p.type === "change" ? "change" : p.type;
+      lines.push('      <direction placement="below">');
+      lines.push("        <direction-type>");
+      lines.push(`          <pedal type="${pedalType}" line="yes"/>`);
+      lines.push("        </direction-type>");
+      if (p.onsetQuarters > 0) {
+        const div = Math.max(0, Math.round(p.onsetQuarters * doc.divisions));
+        lines.push(`        <offset>${div}</offset>`);
+      }
+      lines.push("      </direction>");
+    }
   }
 
   // Emit notes staff-by-staff with backups so both staves share the measure.

@@ -1,17 +1,42 @@
 import { defaultStaffForMidi } from "./document";
 
-export interface RawCaptureEvent {
+export interface RawNoteEvent {
+  kind: "note";
   midi: number;
   type: "on" | "off";
-  /** Seconds from capture start. */
+  /** Seconds from capture/clip origin. */
+  t: number;
+  /** Note-on velocity 1–127; optional on note-off. */
+  velocity?: number;
+}
+
+export interface RawCcEvent {
+  kind: "cc";
+  controller: number;
+  value: number;
   t: number;
 }
+
+/** Timed capture event — notes or pedal/controller. */
+export type RawCaptureEvent = RawNoteEvent | RawCcEvent;
+
+/** @deprecated Prefer RawNoteEvent; kept for narrow note-only call sites. */
+export type RawNoteCapture = Omit<RawNoteEvent, "kind"> & { kind?: "note" };
 
 export interface QuantizedNote {
   midi: number;
   onsetQuarters: number;
   durationQuarters: number;
   staffIndex: number;
+  velocity?: number;
+}
+
+export interface QuantizedPedal {
+  onsetQuarters: number;
+  controller: number;
+  /** start when value >= 64, stop when value < 64, else change */
+  type: "start" | "stop" | "change";
+  value: number;
 }
 
 export interface QuantizeOptions {
@@ -20,6 +45,21 @@ export interface QuantizeOptions {
   gridQuarters: number;
   /** Chord grace window in seconds. */
   chordGraceSec?: number;
+}
+
+export function asNoteEvents(events: RawCaptureEvent[]): RawNoteEvent[] {
+  return normalizeCaptureEvents(events).filter((e): e is RawNoteEvent => e.kind === "note");
+}
+
+/** Normalize legacy note-only events (no `kind`) into RawCaptureEvent[]. */
+export function normalizeCaptureEvents(
+  events: Array<RawCaptureEvent | { midi: number; type: "on" | "off"; t: number; velocity?: number }>,
+): RawCaptureEvent[] {
+  return events.map((e) => {
+    if ("kind" in e && (e.kind === "cc" || e.kind === "note")) return e as RawCaptureEvent;
+    const n = e as { midi: number; type: "on" | "off"; t: number; velocity?: number };
+    return { kind: "note" as const, midi: n.midi, type: n.type, t: n.t, velocity: n.velocity };
+  });
 }
 
 /**
@@ -33,27 +73,31 @@ export function quantizeCapture(
   const chordGraceSec = options.chordGraceSec ?? 0.04;
   const secPerQuarter = 60 / Math.max(1, bpm);
 
-  const ons = new Map<number, number>(); // midi -> t
-  const pairs: { midi: number; on: number; off: number }[] = [];
+  const noteEvents = asNoteEvents(normalizeCaptureEvents(events));
+  const ons = new Map<number, { t: number; velocity?: number }>();
+  const pairs: { midi: number; on: number; off: number; velocity?: number }[] = [];
 
-  const sorted = [...events].sort((a, b) => a.t - b.t || (a.type === "on" ? -1 : 1));
+  const sorted = [...noteEvents].sort((a, b) => a.t - b.t || (a.type === "on" ? -1 : 1));
   for (const ev of sorted) {
     if (ev.type === "on") {
-      ons.set(ev.midi, ev.t);
+      ons.set(ev.midi, { t: ev.t, velocity: ev.velocity });
     } else {
       const on = ons.get(ev.midi);
       if (on == null) continue;
       ons.delete(ev.midi);
-      pairs.push({ midi: ev.midi, on, off: Math.max(on + 0.05, ev.t) });
+      pairs.push({
+        midi: ev.midi,
+        on: on.t,
+        off: Math.max(on.t + 0.05, ev.t),
+        velocity: on.velocity,
+      });
     }
   }
-  // Notes still held at end: close at last event time + small pad
   const endT = sorted.length ? sorted[sorted.length - 1]!.t + 0.25 : 0;
   for (const [midi, on] of ons) {
-    pairs.push({ midi, on, off: endT });
+    pairs.push({ midi, on: on.t, off: endT, velocity: on.velocity });
   }
 
-  // Cluster chord onsets
   pairs.sort((a, b) => a.on - b.on);
   const clusters: { on: number; notes: typeof pairs }[] = [];
   for (const p of pairs) {
@@ -80,12 +124,11 @@ export function quantizeCapture(
         onsetQuarters,
         durationQuarters,
         staffIndex: defaultStaffForMidi(n.midi),
+        velocity: n.velocity,
       });
     }
   }
 
-  // Merge same onset+midi duplicates; merge chord pitches later in commands
-  // Combine same onset+staff into chords by grouping
   const grouped = new Map<string, QuantizedNote[]>();
   for (const n of out) {
     const key = `${n.onsetQuarters}:${n.staffIndex}`;
@@ -96,16 +139,10 @@ export function quantizeCapture(
 
   const merged: QuantizedNote[] = [];
   for (const group of grouped.values()) {
-    // Keep separate notes; WriteCommand mergeRecorded creates one note each —
-    // for chords, emit one entry per pitch with same onset (commands create separate notes).
-    // Better: return individual notes; UI can leave them. Chord display needs same-onset merge in toMusicXml.
-    // We'll merge into single chord notes here for cleaner XML:
     if (group.length === 1) {
       merged.push(group[0]!);
       continue;
     }
-    // Same onset — keep as separate QuantizedNotes; commands should chord-merge
-    // For now push all; mergeRecorded will create separate notes. Improve: return chord midis
     const maxDur = Math.max(...group.map((g) => g.durationQuarters));
     for (const g of group) {
       merged.push({ ...g, durationQuarters: maxDur });
@@ -115,28 +152,84 @@ export function quantizeCapture(
   return merged.sort((a, b) => a.onsetQuarters - b.onsetQuarters || a.midi - b.midi);
 }
 
+/** Map pedal CC events onto the same quarter-note timeline as quantized notes. */
+export function quantizePedals(
+  events: RawCaptureEvent[],
+  options: Pick<QuantizeOptions, "bpm" | "gridQuarters">,
+): QuantizedPedal[] {
+  const secPerQuarter = 60 / Math.max(1, options.bpm);
+  const snap = (quarters: number) =>
+    Math.max(0, Math.round(quarters / options.gridQuarters) * options.gridQuarters);
+
+  const out: QuantizedPedal[] = [];
+  for (const ev of normalizeCaptureEvents(events)) {
+    if (ev.kind !== "cc") continue;
+    if (ev.controller !== 64 && ev.controller !== 66 && ev.controller !== 67) continue;
+    const type: QuantizedPedal["type"] =
+      ev.value >= 64 ? "start" : ev.value === 0 ? "stop" : "change";
+    // Binary pedals: treat mid values as start (>=64) or stop (<64)
+    const binaryType: QuantizedPedal["type"] = ev.value >= 64 ? "start" : "stop";
+    out.push({
+      onsetQuarters: snap(ev.t / secPerQuarter),
+      controller: ev.controller,
+      type: ev.controller === 64 ? binaryType : type,
+      value: ev.value,
+    });
+  }
+  return out.sort((a, b) => a.onsetQuarters - b.onsetQuarters);
+}
+
 /** Merge quantized notes that share onset+staff into chord-friendly rows for mergeRecorded. */
 export function collapseChords(notes: QuantizedNote[]): {
   midis: number[];
   onsetQuarters: number;
   durationQuarters: number;
   staffIndex: number;
+  velocity?: number;
 }[] {
-  const map = new Map<string, { midis: number[]; onsetQuarters: number; durationQuarters: number; staffIndex: number }>();
+  const map = new Map<
+    string,
+    {
+      midis: number[];
+      onsetQuarters: number;
+      durationQuarters: number;
+      staffIndex: number;
+      velocity?: number;
+    }
+  >();
   for (const n of notes) {
     const key = `${n.onsetQuarters}:${n.staffIndex}`;
     const cur = map.get(key);
     if (cur) {
       cur.midis.push(n.midi);
       cur.durationQuarters = Math.max(cur.durationQuarters, n.durationQuarters);
+      if (n.velocity != null) {
+        cur.velocity =
+          cur.velocity == null ? n.velocity : Math.max(cur.velocity, n.velocity);
+      }
     } else {
       map.set(key, {
         midis: [n.midi],
         onsetQuarters: n.onsetQuarters,
         durationQuarters: n.durationQuarters,
         staffIndex: n.staffIndex,
+        velocity: n.velocity,
       });
     }
   }
   return [...map.values()].sort((a, b) => a.onsetQuarters - b.onsetQuarters);
+}
+
+/** Map MIDI velocity 1–127 onto Write dynamics bands (optional printed marking). */
+export function velocityToDynamics(
+  velocity: number | undefined,
+): "pp" | "p" | "mp" | "mf" | "f" | "ff" | undefined {
+  if (velocity == null || !Number.isFinite(velocity)) return undefined;
+  const v = Math.max(1, Math.min(127, Math.round(velocity)));
+  if (v < 24) return "pp";
+  if (v < 40) return "p";
+  if (v < 56) return "mp";
+  if (v < 72) return "mf";
+  if (v < 96) return "f";
+  return "ff";
 }

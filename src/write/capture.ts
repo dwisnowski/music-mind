@@ -1,18 +1,35 @@
-import { quantizeCapture, collapseChords, type RawCaptureEvent, type QuantizedNote } from "./quantize";
+import {
+  quantizeCapture,
+  collapseChords,
+  quantizePedals,
+  normalizeCaptureEvents,
+  type RawCaptureEvent,
+  type QuantizedNote,
+  type QuantizedPedal,
+} from "./quantize";
+import { DOCK_DEFAULT_VELOCITY } from "./rollingBuffer";
 
 export type CaptureState = "idle" | "countIn" | "recording";
 
 export interface CaptureSessionOptions {
   bpm: number;
   gridQuarters: number;
-  /** Count-in beats before recording (default 4). */
+  /** Count-in beats before recording (default 4). 0 = start immediately. */
   countInBeats?: number;
+  /** When false, skip metronome clicks (tray takes). Default true. */
+  metronome?: boolean;
   onBeat?: (beatIndex: number, isCountIn: boolean) => void;
   onState?: (state: CaptureState) => void;
 }
 
+export interface CaptureStopResult {
+  notes: QuantizedNote[];
+  pedals: QuantizedPedal[];
+  events: RawCaptureEvent[];
+}
+
 /**
- * Metronome-backed capture of MIDI/on-screen note on/off events.
+ * Metronome-backed (or free) capture of MIDI/on-screen note + pedal events.
  */
 export class CaptureSession {
   private state: CaptureState = "idle";
@@ -37,16 +54,29 @@ export class CaptureSession {
     const bpm = Math.max(40, Math.min(240, opts.bpm));
     const beatSec = 60 / bpm;
     const countIn = opts.countInBeats ?? 4;
+    const useMetronome = opts.metronome !== false;
 
-    this.audio = new AudioContext();
-    await this.audio.resume();
+    if (useMetronome || countIn > 0) {
+      this.audio = new AudioContext();
+      await this.audio.resume();
+    }
+
+    if (countIn <= 0) {
+      this.startPerf = performance.now();
+      this.setState("recording");
+      opts.onBeat?.(0, false);
+      if (useMetronome && this.audio) {
+        this.scheduleMetronomeBeats(this.audio, this.audio.currentTime + 0.05, beatSec, bpm, opts);
+      }
+      return;
+    }
 
     this.setState("countIn");
-    const ctx = this.audio;
+    const ctx = this.audio!;
     const t0 = ctx.currentTime + 0.05;
 
     for (let i = 0; i < countIn; i++) {
-      this.scheduleClick(ctx, t0 + i * beatSec, true);
+      if (useMetronome) this.scheduleClick(ctx, t0 + i * beatSec, true);
       const delay = Math.max(0, (t0 + i * beatSec - ctx.currentTime) * 1000);
       this.timers.push(window.setTimeout(() => opts.onBeat?.(i, true), delay));
     }
@@ -61,6 +91,93 @@ export class CaptureSession {
       }, delayMs),
     );
 
+    if (useMetronome) {
+      this.scheduleMetronomeBeats(ctx, recordAt, beatSec, bpm, opts);
+    }
+  }
+
+  noteOn(midi: number, timestamp?: number, velocity?: number) {
+    if (this.state !== "recording") return;
+    this.events.push({
+      kind: "note",
+      midi,
+      type: "on",
+      t: this.elapsedSec(timestamp),
+      velocity: velocity ?? DOCK_DEFAULT_VELOCITY,
+    });
+  }
+
+  noteOff(midi: number, timestamp?: number, velocity?: number) {
+    if (this.state !== "recording") return;
+    this.events.push({
+      kind: "note",
+      midi,
+      type: "off",
+      t: this.elapsedSec(timestamp),
+      velocity,
+    });
+  }
+
+  controlChange(controller: number, value: number, timestamp?: number) {
+    if (this.state !== "recording") return;
+    this.events.push({
+      kind: "cc",
+      controller,
+      value,
+      t: this.elapsedSec(timestamp),
+    });
+  }
+
+  /** Stop without quantizing — return raw events (for tray takes). */
+  stopRaw(): RawCaptureEvent[] {
+    this.stopTimers();
+    this.setState("idle");
+    void this.audio?.close();
+    this.audio = null;
+    const events = normalizeCaptureEvents(this.events);
+    this.events = [];
+    this.opts = null;
+    return events;
+  }
+
+  stop(): CaptureStopResult {
+    const opts = this.opts;
+    const events = normalizeCaptureEvents(this.events);
+    this.stopTimers();
+    this.setState("idle");
+    void this.audio?.close();
+    this.audio = null;
+    this.events = [];
+    this.opts = null;
+    if (!opts) return { notes: [], pedals: [], events };
+    return {
+      notes: quantizeCapture(events, {
+        bpm: opts.bpm,
+        gridQuarters: opts.gridQuarters,
+      }),
+      pedals: quantizePedals(events, {
+        bpm: opts.bpm,
+        gridQuarters: opts.gridQuarters,
+      }),
+      events,
+    };
+  }
+
+  stopCollapsed() {
+    const result = this.stop();
+    return {
+      ...result,
+      collapsed: collapseChords(result.notes),
+    };
+  }
+
+  private scheduleMetronomeBeats(
+    ctx: AudioContext,
+    recordAt: number,
+    beatSec: number,
+    bpm: number,
+    opts: CaptureSessionOptions,
+  ) {
     const maxBeats = Math.ceil((8 * 60) / beatSec);
     for (let i = 0; i < maxBeats; i++) {
       const at = recordAt + i * beatSec;
@@ -71,33 +188,7 @@ export class CaptureSession {
         }, Math.max(0, (at - ctx.currentTime) * 1000)),
       );
     }
-  }
-
-  noteOn(midi: number, timestamp?: number) {
-    if (this.state !== "recording") return;
-    this.events.push({ midi, type: "on", t: this.elapsedSec(timestamp) });
-  }
-
-  noteOff(midi: number, timestamp?: number) {
-    if (this.state !== "recording") return;
-    this.events.push({ midi, type: "off", t: this.elapsedSec(timestamp) });
-  }
-
-  stop(): QuantizedNote[] {
-    const opts = this.opts;
-    this.stopTimers();
-    this.setState("idle");
-    void this.audio?.close();
-    this.audio = null;
-    if (!opts) return [];
-    return quantizeCapture(this.events, {
-      bpm: opts.bpm,
-      gridQuarters: opts.gridQuarters,
-    });
-  }
-
-  stopCollapsed() {
-    return collapseChords(this.stop());
+    void bpm;
   }
 
   private elapsedSec(timestamp?: number): number {

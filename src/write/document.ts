@@ -46,15 +46,29 @@ export interface WriteNote {
   lyric?: WriteLyric;
   articulations?: ArticulationId[];
   dynamics?: DynamicId;
+  /** MIDI velocity 1–127 retained from capture (performance). */
+  velocity?: number;
   beam?: "begin" | "continue" | "end";
   /** Tuplet ratio actual:normal (e.g. 3:2). */
   tuplet?: { actual: number; normal: number; place: "start" | "stop" };
+}
+
+/** Pedal direction within a measure (MusicXML `<pedal>`). */
+export interface WritePedalMark {
+  /** Onset within the measure in quarter-notes. */
+  onsetQuarters: number;
+  type: "start" | "stop" | "change";
+  /** MIDI CC: 64 sustain, 66 sostenuto, 67 soft. */
+  controller: number;
+  value?: number;
 }
 
 export interface WriteMeasure {
   index: number;
   /** Notes in chronological order within the measure (all voices/staves). */
   notes: WriteNote[];
+  /** Sustain / pedal directions timed within the measure. */
+  pedals?: WritePedalMark[];
   rehearsal?: string;
   keyFifths?: number;
   beats?: number;

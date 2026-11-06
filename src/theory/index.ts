@@ -35,3 +35,13 @@ export {
   riffsForGenre,
   type RiffDef,
 } from "./riffs";
+
+export {
+  deleteUserRiff,
+  getUserRiff,
+  isUserRiffId,
+  listUserRiffs,
+  newUserRiffId,
+  saveUserRiff,
+  type UserRiff,
+} from "./userRiffStore";
