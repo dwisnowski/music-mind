@@ -11,6 +11,7 @@ import { type SampleScore } from "./score/samples";
 import type { Hand, LoadedScore } from "./score/types";
 import { FeedbackEngine, type FeedbackState } from "./practice/feedbackEngine";
 import { ScorePlayer } from "./audio/scorePlayer";
+import { PianoClickSynth } from "./audio/pianoClickSynth";
 import { WilliamsLights, loadLightProfile, type LightProfile } from "./lights/williamsLights";
 import { ScoreView, type ListenTransport } from "./ui/ScoreView";
 import { PianoKeyboard, type KeyVisualState } from "./ui/PianoKeyboard";
@@ -37,6 +38,7 @@ import {
 
 const DOCK_PIN_KEY = "music-mind-dock-pinned";
 const PIANO_CONTROLS_KEY = "mm.pianoControls";
+const PIANO_CLICK_SOUND_KEY = "mm.pianoClickSound";
 
 type AppMode = "practice" | "fallingLights" | "echoGhost";
 type GameId = "fallingLights" | "echoGhost";
@@ -51,6 +53,14 @@ function loadPianoControlsEnabled(): boolean {
   }
 }
 
+function loadSoundEnabled(): boolean {
+  try {
+    return localStorage.getItem(PIANO_CLICK_SOUND_KEY) === "1";
+  } catch {
+    return false;
+  }
+}
+
 export default function App() {
   const engineRef = useRef(new FeedbackEngine());
   const [fallingLightsEngine] = useState(() => new FallingLightsEngine());
@@ -59,6 +69,7 @@ export default function App() {
   const echoGhostRef = useRef(echoGhostEngine);
   const lightsRef = useRef(new WilliamsLights());
   const playerRef = useRef(new ScorePlayer());
+  const pianoClickSynthRef = useRef(new PianoClickSynth());
   const adapterRef = useRef<MidiAdapter | null>(null);
   const heardRef = useRef(new Set<number>());
   const clickCycleChannelRef = useRef(loadLightProfile().channel);
@@ -68,6 +79,7 @@ export default function App() {
   const feedbackRef = useRef<FeedbackState | null>(null);
   const listenEventIndexRef = useRef<number | null>(null);
   const pianoControlsEnabledRef = useRef(loadPianoControlsEnabled());
+  const soundEnabledRef = useRef(loadSoundEnabled());
   const controlKeysRef = useRef(new ControlKeyHandler());
   const dispatchControlRef = useRef<(action: ControlAction) => void>(() => {});
   const appModeRef = useRef<AppMode>("practice");
@@ -94,6 +106,7 @@ export default function App() {
     }
   });
   const [pianoControlsEnabled, setPianoControlsEnabled] = useState(loadPianoControlsEnabled);
+  const [soundEnabled, setSoundEnabled] = useState(loadSoundEnabled);
   const [pianoControlsHelpOpen, setPianoControlsHelpOpen] = useState(false);
   const [dockSpacerPx, setDockSpacerPx] = useState(0);
   const [loadingSampleId, setLoadingSampleId] = useState<string | null>(null);
@@ -154,8 +167,16 @@ export default function App() {
   }, [pianoControlsEnabled]);
 
   useEffect(() => {
+    soundEnabledRef.current = soundEnabled;
+  }, [soundEnabled]);
+
+  useEffect(() => {
     const player = playerRef.current;
-    return () => player.stop({ emitEnded: false });
+    const clickSynth = pianoClickSynthRef.current;
+    return () => {
+      player.stop({ emitEnded: false });
+      clickSynth.dispose();
+    };
   }, []);
 
   useEffect(() => {
@@ -241,6 +262,14 @@ export default function App() {
       /* ignore */
     }
   }, [pianoControlsEnabled]);
+
+  useEffect(() => {
+    try {
+      localStorage.setItem(PIANO_CLICK_SOUND_KEY, soundEnabled ? "1" : "0");
+    } catch {
+      /* ignore */
+    }
+  }, [soundEnabled]);
 
   useEffect(() => {
     if (!dockPinned) {
@@ -586,6 +615,10 @@ export default function App() {
       }
     }
 
+    if (soundEnabledRef.current) {
+      void pianoClickSynthRef.current.play(midi);
+    }
+
     heardRef.current.add(midi);
     setHeard(new Set(heardRef.current));
 
@@ -798,6 +831,15 @@ export default function App() {
                   Stop
                 </button>
               ) : null}
+              <button
+                type="button"
+                className="btn"
+                onClick={() => engineRef.current.reset()}
+                disabled={listenActive}
+                title="Restart practice from the beginning"
+              >
+                Restart
+              </button>
             </div>
             <ScoreView
               xml={score.xml}
@@ -865,39 +907,6 @@ export default function App() {
           <div className="dock-buttons">
             <button
               type="button"
-              className={`btn ${listenPlaying ? "listening" : ""}`}
-              onClick={togglePlayPause}
-              disabled={!score || gameActive}
-              title={playPauseTitle}
-            >
-              {playPauseLabel}
-            </button>
-            {listenActive ? (
-              <button
-                type="button"
-                className="btn"
-                onClick={stopListen}
-                title="Stop Listen and hide amber cursor (practice stays put)"
-              >
-                Stop
-              </button>
-            ) : null}
-            <label className="field inline">
-              <span>BPM</span>
-              <input
-                type="number"
-                min={40}
-                max={200}
-                value={listenBpm}
-                disabled={!score || listenPlaying || gameActive}
-                onChange={(e) => setListenBpm(Math.min(200, Math.max(40, Number(e.target.value) || 80)))}
-              />
-            </label>
-            <button type="button" className="btn" onClick={() => engineRef.current.reset()} disabled={!score || listenActive || gameActive}>
-              Restart
-            </button>
-            <button
-              type="button"
               className="btn"
               onClick={() => engineRef.current.showHint()}
               disabled={!score || feedback?.done || listenActive || gameActive}
@@ -911,6 +920,17 @@ export default function App() {
                 <option value="right">Right</option>
                 <option value="left">Left</option>
               </select>
+            </label>
+            <label
+              className="field inline"
+              title="Play tones when clicking the on-screen piano"
+            >
+              <span>Sound</span>
+              <input
+                type="checkbox"
+                checked={soundEnabled}
+                onChange={(e) => setSoundEnabled(e.target.checked)}
+              />
             </label>
             <div className="piano-controls-group">
               <label
