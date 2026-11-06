@@ -18,8 +18,9 @@ import { ScoreView, type ListenTransport } from "./ui/ScoreView";
 import { PianoKeyboard, type KeyVisualState } from "./ui/PianoKeyboard";
 import { ConnectPanel } from "./ui/ConnectPanel";
 import { LightsPanel } from "./ui/LightsPanel";
-import { LibraryBrowser } from "./ui/LibraryBrowser";
 import { PianoControlsHelp } from "./ui/PianoControlsHelp";
+import { HomePage } from "./ui/HomePage";
+import { LibraryPage, type GameId } from "./ui/LibraryPage";
 import {
   ControlKeyHandler,
   isReservedControlMidi,
@@ -68,13 +69,14 @@ const PIANO_CLICK_SOUND_KEY = "mm.pianoClickSound";
 const LISTEN_MIDI_SOUND_KEY = "mm.listenMidiSound";
 
 type AppMode =
+  | "home"
+  | "library"
   | "practice"
   | "write"
   | "freePractice"
   | "fallingLights"
   | "echoGhost"
   | "balloonPop";
-type GameId = "fallingLights" | "echoGhost" | "balloonPop";
 
 function loadPianoControlsEnabled(): boolean {
   try {
@@ -129,7 +131,7 @@ export default function App() {
   const listenMidiSoundRef = useRef(loadListenMidiSound());
   const controlKeysRef = useRef(new ControlKeyHandler());
   const dispatchControlRef = useRef<(action: ControlAction) => void>(() => {});
-  const appModeRef = useRef<AppMode>("practice");
+  const appModeRef = useRef<AppMode>("home");
   const scoreRef = useRef<LoadedScore | null>(null);
   const writeScoreRef = useRef<LoadedScore | null>(null);
   const writeNoteSinkRef = useRef<{
@@ -167,7 +169,7 @@ export default function App() {
   const [pianoControlsHelpOpen, setPianoControlsHelpOpen] = useState(false);
   const [dockSpacerPx, setDockSpacerPx] = useState(0);
   const [loadingSampleId, setLoadingSampleId] = useState<string | null>(null);
-  const [appMode, setAppMode] = useState<AppMode>("practice");
+  const [appMode, setAppMode] = useState<AppMode>("home");
   const [gamesMenuOpen, setGamesMenuOpen] = useState(false);
   const [echoSnap, setEchoSnap] = useState<EchoGhostSnapshot>(() => echoGhostEngine.snapshot());
   const [balloonSnap, setBalloonSnap] = useState<BalloonPopSnapshot>(() =>
@@ -189,10 +191,16 @@ export default function App() {
 
   const listenActive = listenTransport !== "idle";
   const listenPlaying = listenTransport === "playing";
+  const homeActive = appMode === "home";
+  const libraryActive = appMode === "library";
   const writeActive = appMode === "write";
   const freePracticeActive = appMode === "freePractice";
   const gameActive =
     appMode === "fallingLights" || appMode === "echoGhost" || appMode === "balloonPop";
+
+  const returnAfterMode = useCallback(() => {
+    setAppMode(scoreRef.current ? "practice" : "home");
+  }, []);
 
   useEffect(() => {
     scoreRef.current = score;
@@ -671,8 +679,8 @@ export default function App() {
     balloonPopRef.current.stop();
     freePracticeRef.current.stop();
     setGamesMenuOpen(false);
-    setAppMode("practice");
-  }, []);
+    returnAfterMode();
+  }, [returnAfterMode]);
 
   const enterGame = useCallback(
     (game: GameId) => {
@@ -731,8 +739,8 @@ export default function App() {
     lightsRef.current.clear();
     heardRef.current.clear();
     setHeard(new Set());
-    setAppMode("practice");
-  }, []);
+    returnAfterMode();
+  }, [returnAfterMode]);
 
   const onFpGenre = useCallback((id: GenreId) => {
     const g = getGenre(id);
@@ -803,8 +811,8 @@ export default function App() {
     clearListenHeard();
     setWriteScore(null);
     setWriteInitialXml(null);
-    setAppMode("practice");
-  }, [clearListenHeard]);
+    returnAfterMode();
+  }, [clearListenHeard, returnAfterMode]);
 
   const openWriteInPractice = useCallback((loaded: LoadedScore) => {
     playerRef.current.stop({ emitEnded: false });
@@ -818,13 +826,13 @@ export default function App() {
     setAppMode("practice");
   }, [clearListenHeard, hand]);
 
-  const goHome = useCallback(() => {
+  const clearToSurface = useCallback((mode: "home" | "library") => {
     fallingLightsRef.current.stop();
     echoGhostRef.current.stop();
     balloonPopRef.current.stop();
     freePracticeRef.current.stop();
     setGamesMenuOpen(false);
-    setAppMode("practice");
+    setAppMode(mode);
     playerRef.current.stop({ emitEnded: false });
     setListenTransport("idle");
     setListenEventIndex(null);
@@ -837,6 +845,14 @@ export default function App() {
     setWriteScore(null);
     setWriteInitialXml(null);
   }, []);
+
+  const goHome = useCallback(() => {
+    clearToSurface("home");
+  }, [clearToSurface]);
+
+  const goLibrary = useCallback(() => {
+    clearToSurface("library");
+  }, [clearToSurface]);
 
   const onLoadFile = useCallback(async (file: File | null) => {
     if (!file) return;
@@ -854,6 +870,7 @@ export default function App() {
       }
       setScore(loaded);
       engineRef.current.load(loaded, hand);
+      setAppMode("practice");
       setSettingsOpen(false);
     } catch (err) {
       setMidiError(err instanceof Error ? err.message : String(err));
@@ -1094,53 +1111,29 @@ export default function App() {
             type="button"
             className="brand-home"
             onClick={goHome}
-            title="Back to all scores"
-            aria-label="Music Mind — back to all scores"
+            title="Music Mind home"
+            aria-label="Music Mind — home"
           >
             Music Mind
           </button>
         </h1>
         <div className="topbar-actions">
-          {writeActive ? (
-            <button
-              type="button"
-              className="btn game-active"
-              onClick={exitWrite}
-              title="Leave Write and return to practice"
-            >
-              Leave Write
-            </button>
-          ) : freePracticeActive ? (
-            <button
-              type="button"
-              className="btn game-active"
-              onClick={exitFreePractice}
-              title="Leave Free Practice and return to practice"
-            >
-              Leave Free Practice
-            </button>
-          ) : gameActive ? (
-            <button
-              type="button"
-              className="btn game-active"
-              onClick={exitGame}
-              title="Leave game and return to practice"
-            >
-              Leave game
-            </button>
-          ) : (
-            <div className="games-menu">
+          <div className="mode-group" role="group" aria-label="Modes">
+            <div className="games-menu mode-group-seg">
               <button
                 type="button"
-                className="btn"
-                onClick={() => setGamesMenuOpen((v) => !v)}
+                className={`btn mode-seg${gameActive ? " primary" : ""}`}
+                onClick={() => {
+                  if (gameActive) exitGame();
+                  else setGamesMenuOpen((v) => !v);
+                }}
                 aria-expanded={gamesMenuOpen}
                 aria-haspopup="menu"
-                title="Open mini-games"
+                title={gameActive ? "Leave game" : "Open mini-games"}
               >
                 Games
               </button>
-              {gamesMenuOpen ? (
+              {gamesMenuOpen && !gameActive ? (
                 <div className="games-menu-panel" role="menu">
                   <button
                     type="button"
@@ -1169,48 +1162,42 @@ export default function App() {
                 </div>
               ) : null}
             </div>
-          )}
-          <button
-            type="button"
-            className={`btn${freePracticeActive ? " primary" : ""}`}
-            onClick={() => enterFreePractice()}
-            disabled={gameActive || writeActive}
-            title="Free Practice — scales, riffs, and theory helpers"
-          >
-            Free Practice
-          </button>
-          <button
-            type="button"
-            className={`btn${writeActive ? " primary" : ""}`}
-            onClick={() => enterWrite()}
-            disabled={gameActive || freePracticeActive}
-            title="Write sheet music by playing"
-          >
-            Write
-          </button>
+            <button
+              type="button"
+              className={`btn mode-seg${freePracticeActive ? " primary" : ""}`}
+              onClick={() => {
+                if (freePracticeActive) exitFreePractice();
+                else enterFreePractice();
+              }}
+              title={
+                freePracticeActive
+                  ? "Leave Free Practice"
+                  : "Free Practice — scales, riffs, and theory helpers"
+              }
+            >
+              Free Practice
+            </button>
+            <button
+              type="button"
+              className={`btn mode-seg${writeActive ? " primary" : ""}`}
+              onClick={() => {
+                if (writeActive) exitWrite();
+                else enterWrite();
+              }}
+              title={writeActive ? "Leave Write" : "Write sheet music by playing"}
+            >
+              Write
+            </button>
+          </div>
           <button
             type="button"
             className="btn"
-            onClick={goHome}
+            onClick={goLibrary}
             title="Browse scores"
-            disabled={(!score && !writeActive && !freePracticeActive) || gameActive}
+            disabled={libraryActive}
           >
             Library
           </button>
-          <label
-            className={`btn primary file-btn${
-              gameActive || writeActive || freePracticeActive ? " disabled" : ""
-            }`}
-          >
-            Load score
-            <input
-              type="file"
-              accept=".musicxml,.xml,.mxl,application/vnd.recordare.musicxml+xml,application/xml,text/xml"
-              hidden
-              disabled={gameActive || writeActive || freePracticeActive}
-              onChange={(e) => void onLoadFile(e.target.files?.[0] ?? null)}
-            />
-          </label>
           <button
             type="button"
             className="btn"
@@ -1220,8 +1207,29 @@ export default function App() {
           >
             Connect
           </button>
-          <button type="button" className="btn ghost" onClick={() => setSettingsOpen((v) => !v)}>
-            Settings
+          <button
+            type="button"
+            className="btn ghost icon-btn"
+            onClick={() => setSettingsOpen((v) => !v)}
+            title="Settings"
+            aria-label="Settings"
+            aria-pressed={settingsOpen}
+          >
+            <svg
+              className="gear-icon"
+              width="18"
+              height="18"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="1.75"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              aria-hidden="true"
+            >
+              <circle cx="12" cy="12" r="3" />
+              <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z" />
+            </svg>
           </button>
         </div>
       </header>
@@ -1252,8 +1260,27 @@ export default function App() {
         </aside>
       )}
 
-      <main className="stage">
-        {appMode === "write" ? (
+      <main className={`stage${homeActive ? " stage-home" : ""}`}>
+        {homeActive ? (
+          <HomePage
+            onBrowseLibrary={goLibrary}
+            onEnterFreePractice={() => enterFreePractice()}
+            onEnterWrite={() => enterWrite()}
+            onEnterGame={enterGame}
+            onConnect={() => {
+              void refreshDevices().then(() => setSettingsOpen(true));
+            }}
+          />
+        ) : libraryActive ? (
+          <LibraryPage
+            onLoadFile={(file) => void onLoadFile(file)}
+            onLoadSample={(sample) => void onLoadSample(sample)}
+            loadingSampleId={loadingSampleId}
+            onEnterWrite={() => enterWrite()}
+            onEnterFreePractice={() => enterFreePractice()}
+            onEnterGame={enterGame}
+          />
+        ) : appMode === "write" ? (
           <WriteWorkspace
             initialXml={writeInitialXml}
             initialTitle={writeInitialTitle}
@@ -1413,64 +1440,18 @@ export default function App() {
             />
           </div>
         ) : (
-          <div className="empty-score">
-            <h2>Load sheet music to practice</h2>
-            <p>
-              Drop a MusicXML or compressed <code>.mxl</code> file, pick a score from the library,
-              connect your Williams piano over MIDI, and play — the cursor waits for the correct notes.
-              Or{" "}
-              <button type="button" className="linkish" onClick={() => enterFreePractice()}>
-                free practice
-              </button>{" "}
-              with lit scales and riffs,{" "}
-              <button type="button" className="linkish" onClick={() => enterWrite()}>
-                write your own sheet music
-              </button>
-              , or try a mini-game:{" "}
-              <button type="button" className="linkish" onClick={() => enterGame("fallingLights")}>
-                Falling Lights
-              </button>{" "}
-              (timing),{" "}
-              <button type="button" className="linkish" onClick={() => enterGame("echoGhost")}>
-                Echo Ghost
-              </button>{" "}
-              (ear echo), or{" "}
-              <button type="button" className="linkish" onClick={() => enterGame("balloonPop")}>
-                Balloon Pop
-              </button>{" "}
-              (pop note/chord balloons).
-            </p>
-            <div className="panel-row wrap" style={{ justifyContent: "center" }}>
-              <label className="btn primary file-btn large">
-                Choose MusicXML
-                <input
-                  type="file"
-                  accept=".musicxml,.xml,.mxl"
-                  hidden
-                  onChange={(e) => void onLoadFile(e.target.files?.[0] ?? null)}
-                />
-              </label>
-              <button type="button" className="btn large" onClick={() => enterWrite()}>
-                Write
-              </button>
-              <button type="button" className="btn large" onClick={() => enterGame("fallingLights")}>
-                Falling Lights
-              </button>
-              <button type="button" className="btn large" onClick={() => enterGame("echoGhost")}>
-                Echo Ghost
-              </button>
-              <button type="button" className="btn large" onClick={() => enterGame("balloonPop")}>
-                Balloon Pop
-              </button>
-            </div>
-            <LibraryBrowser
-              onSelect={(sample) => void onLoadSample(sample)}
-              loadingId={loadingSampleId}
-            />
-          </div>
+          <LibraryPage
+            onLoadFile={(file) => void onLoadFile(file)}
+            onLoadSample={(sample) => void onLoadSample(sample)}
+            loadingSampleId={loadingSampleId}
+            onEnterWrite={() => enterWrite()}
+            onEnterFreePractice={() => enterFreePractice()}
+            onEnterGame={enterGame}
+          />
         )}
       </main>
 
+      {!homeActive ? (
       <section
         ref={dockRef}
         className={`dock${dockPinned ? " dock-pinned" : ""}`}
@@ -1573,6 +1554,7 @@ export default function App() {
           controlsEnabled={pianoControlsEnabled && !writeActive && !freePracticeActive}
         />
       </section>
+      ) : null}
 
       <PianoControlsHelp open={pianoControlsHelpOpen} onClose={closePianoControlsHelp} />
 
@@ -1581,7 +1563,9 @@ export default function App() {
         <a href="https://www.wildideazone.com/projects/music-mind">About this build</a> ·{" "}
         <a href="https://www.wildideazone.com/projects">More projects</a>
       </footer>
-      {dockPinned ? <div className="dock-spacer" style={{ height: dockSpacerPx }} aria-hidden /> : null}
+      {!homeActive && dockPinned ? (
+        <div className="dock-spacer" style={{ height: dockSpacerPx }} aria-hidden />
+      ) : null}
     </div>
   );
 }
