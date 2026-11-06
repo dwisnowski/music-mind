@@ -15,6 +15,11 @@ export interface ScorePlayerOptions {
    * (exclusive end = start + maxEvents).
    */
   maxEvents?: number;
+  /**
+   * When true, keep AudioContext timing and onNote/onEvent callbacks
+   * but silence oscillators (e.g. player-piano MIDI Out is the sound).
+   */
+  muteAudio?: boolean;
   onNote?: ListenNoteHandler;
   /** Fired when a score event (chord/onset) begins, for score cursor follow. */
   onEvent?: ListenEventHandler;
@@ -60,7 +65,7 @@ export class ScorePlayer {
     }
 
     const master = ctx.createGain();
-    master.gain.value = 0.22;
+    master.gain.value = options.muteAudio ? 0 : 0.22;
     master.connect(ctx.destination);
 
     const secPerQuarter = 60 / bpm;

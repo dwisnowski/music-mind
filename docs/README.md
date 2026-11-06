@@ -13,3 +13,4 @@ Architecture decisions and project notes for Music Mind.
 - [0007 – Arabesque remote library](adr/0007-arabesque-remote-library.md) — Second remote catalog via Arabesque `scores.json` + `arabesque.app/scores/`; merged with MuseTrainer in one Remote library UI
 - [0008 – Echo Ghost](adr/0008-echo-ghost.md) — Listen→echo mini-game; generated C4–B4 phrases; pitch-order grading (extends 0006)
 - [0009 – Balloon Pop](adr/0009-balloon-pop.md) — Sky-pop mini-game; Easy/Medium/Hard; note/chord balloons; presence-window grading + hit SFX (extends 0006)
+- [0010 – Listen player-piano MIDI](adr/0010-listen-player-piano-midi.md) — Speaker toggle sends timed MIDI Note On/Off so the piano sounds Listen; mute Web Audio; separate from key lights
