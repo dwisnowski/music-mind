@@ -1,7 +1,13 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   createBestMidiAdapter,
+  detectPianoFamily,
+  matchOutput,
   parseMidiMessage,
+  pianoFamilyAriaLabel,
+  pianoFamilyLabel,
+  preferInput,
+  supportsKeyLights,
   type MidiAdapter,
   type MidiDeviceInfo,
 } from "./midi";
@@ -148,6 +154,8 @@ export default function App() {
   const [inputs, setInputs] = useState<MidiDeviceInfo[]>([]);
   const [outputs, setOutputs] = useState<MidiDeviceInfo[]>([]);
   const [connectedName, setConnectedName] = useState<string | null>(null);
+  const [selectedInputId, setSelectedInputId] = useState<string | null>(null);
+  const [selectedOutputId, setSelectedOutputId] = useState<string | null>(null);
   const [midiError, setMidiError] = useState<string | null>(null);
   const [score, setScore] = useState<LoadedScore | null>(null);
   const [feedback, setFeedback] = useState<FeedbackState | null>(null);
@@ -467,16 +475,30 @@ export default function App() {
     if (!adapterRef.current) return;
     try {
       setMidiError(null);
-      await adapterRef.current.connect(inputId, outputId);
       const ins = await adapterRef.current.listInputs();
-      const chosen = ins.find((d) => d.id === inputId) ?? ins[0];
-      setConnectedName(chosen?.name ?? "MIDI device");
+      const outs = await adapterRef.current.listOutputs();
+      const chosenInput =
+        (inputId ? ins.find((d) => d.id === inputId) : null) ?? preferInput(ins) ?? null;
+      const chosenOutput =
+        (outputId ? outs.find((d) => d.id === outputId) : null) ??
+        matchOutput(chosenInput ?? undefined, outs) ??
+        null;
+      await adapterRef.current.connect(chosenInput?.id, chosenOutput?.id);
+      const name = chosenInput?.name ?? "MIDI device";
+      setConnectedName(name);
+      setSelectedInputId(chosenInput?.id ?? null);
+      setSelectedOutputId(chosenOutput?.id ?? null);
       setInputs(ins);
-      setOutputs(await adapterRef.current.listOutputs());
+      setOutputs(outs);
+      const family = detectPianoFamily(name);
+      lightsRef.current.setDeviceLightsEnabled(supportsKeyLights(family));
       lightsRef.current.setAdapter(adapterRef.current);
     } catch (err) {
       setMidiError(err instanceof Error ? err.message : String(err));
       setConnectedName(null);
+      setSelectedInputId(null);
+      setSelectedOutputId(null);
+      lightsRef.current.setDeviceLightsEnabled(true);
     }
   }, []);
 
@@ -484,8 +506,15 @@ export default function App() {
     midiNoteOutRef.current.allNotesOff(adapterRef.current);
     adapterRef.current?.disconnect();
     lightsRef.current.clear();
+    lightsRef.current.setDeviceLightsEnabled(true);
     setConnectedName(null);
+    setSelectedInputId(null);
+    setSelectedOutputId(null);
   }, []);
+
+  const openSettings = useCallback(() => {
+    void refreshDevices().then(() => setSettingsOpen(true));
+  }, [refreshDevices]);
 
   const clearListenHeard = useCallback(() => {
     heardRef.current.clear();
@@ -1097,6 +1126,12 @@ export default function App() {
       ? "Resume Listen from amber cursor"
       : "Play remaining score from the practice cursor (does not move practice)";
 
+  const pianoConnected = connectedName != null;
+  const pianoFamily = detectPianoFamily(connectedName);
+  const deviceSupportsLights = !pianoConnected || supportsKeyLights(pianoFamily);
+  const midiStatusLabel = pianoFamilyLabel(pianoFamily, pianoConnected);
+  const midiStatusAria = pianoFamilyAriaLabel(pianoFamily, pianoConnected);
+
   return (
     <div className="app">
       <header className="topbar">
@@ -1118,6 +1153,22 @@ export default function App() {
             Music Mind
           </button>
         </h1>
+        <button
+          type="button"
+          className={`topbar-midi pill${pianoConnected ? " ok" : ""}`}
+          onClick={() => {
+            if (settingsOpen) {
+              setSettingsOpen(false);
+              return;
+            }
+            openSettings();
+          }}
+          title={pianoConnected ? connectedName ?? midiStatusLabel : "Open MIDI settings"}
+          aria-label={midiStatusAria}
+          aria-pressed={settingsOpen}
+        >
+          {midiStatusLabel}
+        </button>
         <div className="topbar-actions">
           <div className="mode-group" role="group" aria-label="Modes">
             <button
@@ -1175,7 +1226,7 @@ export default function App() {
                 setSettingsOpen(false);
                 return;
               }
-              void refreshDevices().then(() => setSettingsOpen(true));
+              openSettings();
             }}
             title="Settings"
             aria-label="Settings"
@@ -1205,6 +1256,8 @@ export default function App() {
           <ConnectPanel
             adapter={adapter}
             connectedName={connectedName}
+            selectedInputId={selectedInputId}
+            selectedOutputId={selectedOutputId}
             inputs={inputs}
             outputs={outputs}
             error={midiError}
@@ -1219,6 +1272,7 @@ export default function App() {
           />
           <LightsPanel
             profile={lightProfile}
+            deviceSupportsLights={deviceSupportsLights}
             onChange={onLightProfile}
             onProbeChannel={() => lightsRef.current.pulseProbe()}
             onProbeAll={() => lightsRef.current.probeAllChannels()}
@@ -1233,9 +1287,7 @@ export default function App() {
             onEnterFreePractice={() => enterFreePractice()}
             onEnterWrite={() => enterWrite()}
             onBrowseGames={goGames}
-            onConnect={() => {
-              void refreshDevices().then(() => setSettingsOpen(true));
-            }}
+            onConnect={openSettings}
           />
         ) : libraryActive ? (
           <LibraryPage

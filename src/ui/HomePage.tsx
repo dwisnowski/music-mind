@@ -20,8 +20,8 @@ export function HomePage({
       <section className="home-hero" aria-label="Music Mind introduction">
         <MusicMindParticles />
         <p className="home-lede">
-          Sheet music that waits for you — load MusicXML, connect your Williams piano over MIDI,
-          and play Feedback until every note lands.
+          Sheet music that waits for you — load MusicXML, connect a Williams or Roland FP-60X over
+          MIDI, and play Feedback until every note lands.
         </p>
         <div className="home-cta">
           <button type="button" className="btn primary large" onClick={onBrowseLibrary}>

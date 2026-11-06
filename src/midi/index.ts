@@ -6,6 +6,15 @@ import type { MidiAdapter } from "./types";
 export * from "./types";
 export { createWebMidiAdapter } from "./webMidiAdapter";
 export { createCapacitorMidiAdapter } from "./capacitorMidiAdapter";
+export {
+  detectPianoFamily,
+  supportsKeyLights,
+  pianoFamilyLabel,
+  pianoFamilyAriaLabel,
+  preferInput,
+  matchOutput,
+  type PianoFamily,
+} from "./pianoFamily";
 
 export async function createBestMidiAdapter(): Promise<MidiAdapter> {
   if (Capacitor.isNativePlatform() && (await capacitorMidiAvailable())) {

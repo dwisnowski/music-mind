@@ -95,6 +95,36 @@ button.linkish {
   font-size: clamp(1.4rem, 2.5vw, 1.9rem);
   letter-spacing: -0.02em;
   flex: 1;
+  min-width: 0;
+}
+
+.topbar-midi {
+  appearance: none;
+  border: 0;
+  cursor: pointer;
+  flex-shrink: 1;
+  max-width: 11rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font: inherit;
+  line-height: 1.2;
+}
+
+.topbar-midi:hover,
+.topbar-midi:focus-visible {
+  filter: brightness(0.97);
+}
+
+.topbar-midi:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+.connect-model-notes {
+  margin-top: 0.75rem;
+  display: grid;
+  gap: 0.5rem;
 }
 
 .brand-home {
@@ -1009,10 +1039,18 @@ button.linkish {
 
   .brand {
     order: 1;
-    flex-basis: calc(100% - 40px);
+    flex: 1 1 auto;
+    flex-basis: auto;
+    min-width: 0;
+  }
+
+  .topbar-midi {
+    order: 2;
+    max-width: 9rem;
   }
 
   .topbar-actions {
+    order: 3;
     width: 100%;
   }
 

@@ -23,7 +23,8 @@ export function LibraryPage({
       <h2>Load sheet music to practice</h2>
       <p>
         Drop a MusicXML or compressed <code>.mxl</code> file, pick a score from the library,
-        connect your Williams piano over MIDI, and play — the cursor waits for the correct notes.
+        connect a Williams or Roland FP-60X over MIDI, and play — the cursor waits for the correct
+        notes.
         Or{" "}
         <button type="button" className="linkish" onClick={onEnterFreePractice}>
           free practice

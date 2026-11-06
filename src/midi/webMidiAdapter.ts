@@ -1,4 +1,5 @@
 import type { MidiAdapter, MidiDeviceInfo, MidiMessageHandler } from "./types";
+import { matchOutput, preferInput } from "./pianoFamily";
 
 export function createWebMidiAdapter(): MidiAdapter {
   let access: MIDIAccess | null = null;
@@ -61,13 +62,17 @@ export function createWebMidiAdapter(): MidiAdapter {
       }
 
       const inputs = [...access.inputs.values()];
-      const chosenInput =
-        (inputId ? inputs.find((p) => p.id === inputId) : null) ??
-        inputs.find((p) => /williams|symphony|piano|keyboard/i.test(p.name ?? "")) ??
-        inputs[0] ??
-        null;
+      const inputInfos: MidiDeviceInfo[] = inputs.map((p) => ({
+        id: p.id,
+        name: p.name ?? "MIDI Input",
+        manufacturer: p.manufacturer ?? undefined,
+      }));
+      const preferred = preferInput(inputInfos);
+      const chosenInfo =
+        (inputId ? inputInfos.find((p) => p.id === inputId) : null) ?? preferred ?? null;
+      const chosenInput = chosenInfo ? inputs.find((p) => p.id === chosenInfo.id) ?? null : null;
 
-      if (!chosenInput) {
+      if (!chosenInput || !chosenInfo) {
         throw new Error("No MIDI input found. Pair your piano, then try again.");
       }
 
@@ -75,12 +80,17 @@ export function createWebMidiAdapter(): MidiAdapter {
       input.addEventListener("midimessage", onMidimessage);
 
       const outputs = [...access.outputs.values()];
-      output =
-        (outputId ? outputs.find((p) => p.id === outputId) : null) ??
-        outputs.find((p) => p.name === chosenInput.name) ??
-        outputs.find((p) => /williams|symphony|piano|keyboard/i.test(p.name ?? "")) ??
-        outputs[0] ??
-        null;
+      const outputInfos: MidiDeviceInfo[] = outputs.map((p) => ({
+        id: p.id,
+        name: p.name ?? "MIDI Output",
+        manufacturer: p.manufacturer ?? undefined,
+      }));
+      const matched = matchOutput(chosenInfo, outputInfos);
+      const chosenOutputInfo =
+        (outputId ? outputInfos.find((p) => p.id === outputId) : null) ?? matched ?? null;
+      output = chosenOutputInfo
+        ? (outputs.find((p) => p.id === chosenOutputInfo.id) ?? null)
+        : null;
 
       access.onstatechange = () => {
         /* keep connection; UI can refresh device lists */

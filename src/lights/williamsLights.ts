@@ -69,6 +69,8 @@ export class WilliamsLights {
   /** Active lights keyed as "channel:note" */
   private lit = new Set<string>();
   private adapter: MidiAdapter | null = null;
+  /** When false, do not emit light MIDI (non-Williams pianos). Profile stays unchanged. */
+  private deviceLightsEnabled = true;
 
   constructor(profile: LightProfile = loadLightProfile()) {
     this.profile = profile;
@@ -77,6 +79,20 @@ export class WilliamsLights {
   setAdapter(adapter: MidiAdapter | null) {
     this.clear();
     this.adapter = adapter;
+  }
+
+  /**
+   * Gate physical LED Note Ons for the connected piano family.
+   * Williams stays enabled; Roland/generic never receive light MIDI.
+   */
+  setDeviceLightsEnabled(enabled: boolean) {
+    if (this.deviceLightsEnabled === enabled) return;
+    if (!enabled) this.clear();
+    this.deviceLightsEnabled = enabled;
+  }
+
+  getDeviceLightsEnabled() {
+    return this.deviceLightsEnabled;
   }
 
   getProfile() {
@@ -141,7 +157,7 @@ export class WilliamsLights {
    * Watch the piano LEDs while Local/volume is managed by the player.
    */
   pulseProbe(note = 60, channel = this.profile.channel, ms = 400) {
-    if (!this.adapter) return;
+    if (!this.adapter || !this.deviceLightsEnabled) return;
     const statusOn = 0x90 | (channel & 0x0f);
     const statusOff = 0x80 | (channel & 0x0f);
     this.adapter.send([statusOn, note & 0x7f, this.profile.velocity || 1]);
@@ -162,13 +178,13 @@ export class WilliamsLights {
   }
 
   private sendNoteOn(channel: number, note: number) {
-    if (this.profile.mode === "off" || !this.adapter) return;
+    if (this.profile.mode === "off" || !this.adapter || !this.deviceLightsEnabled) return;
     const status = 0x90 | (channel & 0x0f);
     this.adapter.send([status, note & 0x7f, this.profile.velocity || 1]);
   }
 
   private sendNoteOff(channel: number, note: number) {
-    if (!this.adapter) return;
+    if (!this.adapter || !this.deviceLightsEnabled) return;
     const status = 0x80 | (channel & 0x0f);
     this.adapter.send([status, note & 0x7f, 0]);
   }

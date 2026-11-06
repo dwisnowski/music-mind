@@ -14,7 +14,8 @@ Practice piano with interactive MusicXML, live MIDI feedback, and optional key l
 - On-screen 88-key hint keyboard
 - Web MIDI on desktop (Chrome / Edge)
 - iPad via Capacitor + CoreMIDI (Bluetooth MIDI pairing)
-- Williams Symphony Grand II key-light probe (Note On channel sweep)
+- Williams Symphony Grand II and Roland FP-60X Bluetooth MIDI (top-bar family indicator)
+- Williams Symphony Grand II key-light probe (Note On channel sweep; Williams-only)
 
 ## Develop
 
@@ -69,4 +70,8 @@ Stock Safari/Chrome on iPad cannot use MIDI — use this app (or MIDIWeb Browser
 
 ## Williams key lights
 
-The LED protocol is undocumented. Settings → Key lights → sweep channels 1–16 while watching the LEDs (consider Local Off so outbound notes do not double-trigger sound). Practice channel plus separate **treble** and **bass** Listen channels are saved in `localStorage` (channel ≈ LED color). Listen lights treble/bass staff notes on those two channels; tapping the on-screen keyboard pulses one channel then cycles 0–15 for the next tap.
+The LED protocol is undocumented and applies only when a **Williams / Symphony** MIDI endpoint is connected (Roland FP-60X and other controllers use the on-screen keyboard for hints). Settings → Key lights → sweep channels 1–16 while watching the LEDs (consider Local Off so outbound notes do not double-trigger sound). Practice channel plus separate **treble** and **bass** Listen channels are saved in `localStorage` (channel ≈ LED color). Listen lights treble/bass staff notes on those two channels; tapping the on-screen keyboard pulses one channel then cycles 0–15 for the next tap.
+
+## Roland FP-60X
+
+Enable Bluetooth on the piano (Function → Bluetooth → On). On iPad, pair **FP-60X MIDI** from Music Mind’s **Bluetooth MIDI…** sheet (do not pair MIDI from Settings → Bluetooth). On Mac, connect **FP-60X MIDI** in Audio MIDI Setup, then Refresh → Connect. The top bar shows **Roland FP-60X** when connected.
