@@ -41,13 +41,14 @@ import {
   BalloonPopGame,
   type BalloonPopSnapshot,
 } from "./games/balloonPop";
+import { WriteWorkspace } from "./ui/WriteWorkspace";
 
 const DOCK_PIN_KEY = "music-mind-dock-pinned";
 const PIANO_CONTROLS_KEY = "mm.pianoControls";
 const PIANO_CLICK_SOUND_KEY = "mm.pianoClickSound";
 const LISTEN_MIDI_SOUND_KEY = "mm.listenMidiSound";
 
-type AppMode = "practice" | "fallingLights" | "echoGhost" | "balloonPop";
+type AppMode = "practice" | "write" | "fallingLights" | "echoGhost" | "balloonPop";
 type GameId = "fallingLights" | "echoGhost" | "balloonPop";
 
 function loadPianoControlsEnabled(): boolean {
@@ -102,6 +103,15 @@ export default function App() {
   const controlKeysRef = useRef(new ControlKeyHandler());
   const dispatchControlRef = useRef<(action: ControlAction) => void>(() => {});
   const appModeRef = useRef<AppMode>("practice");
+  const scoreRef = useRef<LoadedScore | null>(null);
+  const writeScoreRef = useRef<LoadedScore | null>(null);
+  const writeNoteSinkRef = useRef<{
+    noteOn: (midi: number, timestamp?: number) => void;
+    noteOff: (midi: number, timestamp?: number) => void;
+  } | null>(null);
+  const [writeScore, setWriteScore] = useState<LoadedScore | null>(null);
+  const [writeInitialXml, setWriteInitialXml] = useState<string | null>(null);
+  const [writeInitialTitle, setWriteInitialTitle] = useState<string | undefined>(undefined);
 
   const [adapter, setAdapter] = useState<MidiAdapter | null>(null);
   const [inputs, setInputs] = useState<MidiDeviceInfo[]>([]);
@@ -144,8 +154,17 @@ export default function App() {
 
   const listenActive = listenTransport !== "idle";
   const listenPlaying = listenTransport === "playing";
+  const writeActive = appMode === "write";
   const gameActive =
     appMode === "fallingLights" || appMode === "echoGhost" || appMode === "balloonPop";
+
+  useEffect(() => {
+    scoreRef.current = score;
+  }, [score]);
+
+  useEffect(() => {
+    writeScoreRef.current = writeScore;
+  }, [writeScore]);
 
   useEffect(() => {
     appModeRef.current = appMode;
@@ -229,6 +248,12 @@ export default function App() {
         const msg = parseMidiMessage(data);
         if (!msg) return;
         if (msg.type === "noteon") {
+          if (appModeRef.current === "write") {
+            heardRef.current.add(msg.note);
+            setHeard(new Set(heardRef.current));
+            writeNoteSinkRef.current?.noteOn(msg.note, timestamp);
+            return;
+          }
           if (pianoControlsEnabledRef.current) {
             const result = controlKeysRef.current.handleNoteOn(msg.note);
             if (result.consumed) {
@@ -254,6 +279,12 @@ export default function App() {
             engineRef.current.noteOn(msg.note);
           }
         } else {
+          if (appModeRef.current === "write") {
+            heardRef.current.delete(msg.note);
+            setHeard(new Set(heardRef.current));
+            writeNoteSinkRef.current?.noteOff(msg.note, timestamp);
+            return;
+          }
           if (pianoControlsEnabledRef.current && isReservedControlMidi(msg.note)) {
             return;
           }
@@ -393,9 +424,15 @@ export default function App() {
     clearListenHeard();
   }, [clearListenHeard]);
 
+  const activeListenScore = useCallback((): LoadedScore | null => {
+    if (appModeRef.current === "write") return writeScoreRef.current;
+    return scoreRef.current;
+  }, []);
+
   const playListenFrom = useCallback(
     async (startEventIndex: number, options?: { maxEvents?: number }) => {
-      if (!score) return;
+      const listenScore = activeListenScore();
+      if (!listenScore) return;
       const maxEvents = options?.maxEvents;
       const muteAudio = listenMidiSoundRef.current;
       lightsRef.current.clear();
@@ -406,7 +443,7 @@ export default function App() {
       setListenEventIndex(startEventIndex);
 
       try {
-        await playerRef.current.play(score, {
+        await playerRef.current.play(listenScore, {
           bpm: listenBpm,
           hand: "both",
           startEventIndex,
@@ -452,11 +489,11 @@ export default function App() {
         setMidiError(err instanceof Error ? err.message : String(err));
       }
     },
-    [score, listenBpm],
+    [listenBpm, activeListenScore],
   );
 
   const togglePlayPause = useCallback(() => {
-    if (!score) return;
+    if (!activeListenScore()) return;
     if (listenTransportRef.current === "playing") {
       pauseListen();
       return;
@@ -465,16 +502,19 @@ export default function App() {
       void playListenFrom(listenEventIndexRef.current);
       return;
     }
-    const start = feedbackRef.current?.eventIndex ?? 0;
+    const start =
+      appModeRef.current === "write" ? 0 : (feedbackRef.current?.eventIndex ?? 0);
     void playListenFrom(start);
-  }, [score, pauseListen, playListenFrom]);
+  }, [activeListenScore, pauseListen, playListenFrom]);
 
   const playNextEvents = useCallback(
     (n: number) => {
-      if (!score) return;
+      if (!activeListenScore()) return;
       let start: number;
       if (listenTransportRef.current === "playing") {
-        start = listenEventIndexRef.current ?? feedbackRef.current?.eventIndex ?? 0;
+        start =
+          listenEventIndexRef.current ??
+          (appModeRef.current === "write" ? 0 : (feedbackRef.current?.eventIndex ?? 0));
         playerRef.current.stop({ emitEnded: false });
       } else if (
         listenTransportRef.current === "paused" &&
@@ -482,11 +522,11 @@ export default function App() {
       ) {
         start = listenEventIndexRef.current;
       } else {
-        start = feedbackRef.current?.eventIndex ?? 0;
+        start = appModeRef.current === "write" ? 0 : (feedbackRef.current?.eventIndex ?? 0);
       }
       void playListenFrom(start, { maxEvents: n });
     },
-    [score, playListenFrom],
+    [activeListenScore, playListenFrom],
   );
 
   useEffect(() => {
@@ -517,8 +557,12 @@ export default function App() {
 
   const onSeekListen = useCallback(
     (eventIndex: number) => {
-      if (!score) return;
-      const clamped = Math.min(Math.max(0, eventIndex), Math.max(0, score.events.length - 1));
+      const listenScore = activeListenScore();
+      if (!listenScore) return;
+      const clamped = Math.min(
+        Math.max(0, eventIndex),
+        Math.max(0, listenScore.events.length - 1),
+      );
       setListenEventIndex(clamped);
 
       if (listenTransportRef.current === "playing") {
@@ -531,7 +575,7 @@ export default function App() {
       lightsRef.current.clear();
       midiNoteOutRef.current.allNotesOff(adapterRef.current);
     },
-    [score, playListenFrom],
+    [activeListenScore, playListenFrom],
   );
 
   const onSeekPractice = useCallback((eventIndex: number) => {
@@ -556,10 +600,52 @@ export default function App() {
       echoGhostRef.current.stop();
       balloonPopRef.current.stop();
       setGamesMenuOpen(false);
+      setWriteScore(null);
+      setWriteInitialXml(null);
       setAppMode(game);
     },
     [clearListenHeard],
   );
+
+  const enterWrite = useCallback(
+    (opts?: { xml?: string; title?: string }) => {
+      playerRef.current.stop({ emitEnded: false });
+      setListenTransport("idle");
+      setListenEventIndex(null);
+      clearListenHeard();
+      fallingLightsRef.current.stop();
+      echoGhostRef.current.stop();
+      balloonPopRef.current.stop();
+      setGamesMenuOpen(false);
+      setWriteInitialXml(opts?.xml ?? scoreRef.current?.xml ?? null);
+      setWriteInitialTitle(opts?.title ?? scoreRef.current?.title);
+      setWriteScore(null);
+      setAppMode("write");
+    },
+    [clearListenHeard],
+  );
+
+  const exitWrite = useCallback(() => {
+    playerRef.current.stop({ emitEnded: false });
+    setListenTransport("idle");
+    setListenEventIndex(null);
+    clearListenHeard();
+    setWriteScore(null);
+    setWriteInitialXml(null);
+    setAppMode("practice");
+  }, [clearListenHeard]);
+
+  const openWriteInPractice = useCallback((loaded: LoadedScore) => {
+    playerRef.current.stop({ emitEnded: false });
+    setListenTransport("idle");
+    setListenEventIndex(null);
+    clearListenHeard();
+    setWriteScore(null);
+    setWriteInitialXml(null);
+    setScore(loaded);
+    engineRef.current.load(loaded, hand);
+    setAppMode("practice");
+  }, [clearListenHeard, hand]);
 
   const goHome = useCallback(() => {
     fallingLightsRef.current.stop();
@@ -576,6 +662,8 @@ export default function App() {
     midiNoteOutRef.current.allNotesOff(adapterRef.current);
     engineRef.current.unload();
     setScore(null);
+    setWriteScore(null);
+    setWriteInitialXml(null);
   }, []);
 
   const onLoadFile = useCallback(async (file: File | null) => {
@@ -684,6 +772,21 @@ export default function App() {
   }, []);
 
   const onPianoKeyClick = useCallback((midi: number) => {
+    if (appModeRef.current === "write") {
+      if (soundEnabledRef.current) {
+        void pianoClickSynthRef.current.play(midi);
+      }
+      heardRef.current.add(midi);
+      setHeard(new Set(heardRef.current));
+      writeNoteSinkRef.current?.noteOn(midi);
+      window.setTimeout(() => {
+        writeNoteSinkRef.current?.noteOff(midi);
+        heardRef.current.delete(midi);
+        setHeard(new Set(heardRef.current));
+      }, 120);
+      return;
+    }
+
     if (pianoControlsEnabledRef.current) {
       const result = controlKeysRef.current.handleNoteOn(midi);
       if (result.consumed) {
@@ -777,7 +880,16 @@ export default function App() {
           </button>
         </h1>
         <div className="topbar-actions">
-          {gameActive ? (
+          {writeActive ? (
+            <button
+              type="button"
+              className="btn game-active"
+              onClick={exitWrite}
+              title="Leave Write and return to practice"
+            >
+              Leave Write
+            </button>
+          ) : gameActive ? (
             <button
               type="button"
               className="btn game-active"
@@ -830,20 +942,29 @@ export default function App() {
           )}
           <button
             type="button"
+            className={`btn${writeActive ? " primary" : ""}`}
+            onClick={() => enterWrite()}
+            disabled={gameActive}
+            title="Write sheet music by playing"
+          >
+            Write
+          </button>
+          <button
+            type="button"
             className="btn"
             onClick={goHome}
             title="Browse scores"
-            disabled={!score || gameActive}
+            disabled={(!score && !writeActive) || gameActive}
           >
             Library
           </button>
-          <label className={`btn primary file-btn${gameActive ? " disabled" : ""}`}>
+          <label className={`btn primary file-btn${gameActive || writeActive ? " disabled" : ""}`}>
             Load score
             <input
               type="file"
               accept=".musicxml,.xml,.mxl,application/vnd.recordare.musicxml+xml,application/xml,text/xml"
               hidden
-              disabled={gameActive}
+              disabled={gameActive || writeActive}
               onChange={(e) => void onLoadFile(e.target.files?.[0] ?? null)}
             />
           </label>
@@ -889,7 +1010,31 @@ export default function App() {
       )}
 
       <main className="stage">
-        {appMode === "fallingLights" ? (
+        {appMode === "write" ? (
+          <WriteWorkspace
+            initialXml={writeInitialXml}
+            initialTitle={writeInitialTitle}
+            listenBpm={listenBpm}
+            onListenBpm={setListenBpm}
+            listenTransport={listenTransport}
+            listenEventIndex={listenEventIndex}
+            listenMidiSound={listenMidiSound}
+            onToggleListenMidiSound={() =>
+              setListenMidiSound((v) => {
+                if (v) midiNoteOutRef.current.allNotesOff(adapterRef.current);
+                return !v;
+              })
+            }
+            onPlayPause={togglePlayPause}
+            onStopListen={stopListen}
+            onSeekListen={onSeekListen}
+            onLoadedScoreChange={setWriteScore}
+            onOpenInPractice={openWriteInPractice}
+            onExit={exitWrite}
+            noteSinkRef={writeNoteSinkRef}
+            feedbackPlaceholder={null}
+          />
+        ) : appMode === "fallingLights" ? (
           <FallingLightsGame engine={fallingLightsEngine} onExit={exitGame} />
         ) : appMode === "echoGhost" ? (
           <EchoGhostGame engine={echoGhostEngine} onExit={exitGame} />
@@ -1008,7 +1153,11 @@ export default function App() {
             <p>
               Drop a MusicXML or compressed <code>.mxl</code> file, pick a score from the library,
               connect your Williams piano over MIDI, and play — the cursor waits for the correct notes.
-              Or try a mini-game:{" "}
+              Or{" "}
+              <button type="button" className="linkish" onClick={() => enterWrite()}>
+                write your own sheet music
+              </button>
+              , or try a mini-game:{" "}
               <button type="button" className="linkish" onClick={() => enterGame("fallingLights")}>
                 Falling Lights
               </button>{" "}
@@ -1032,6 +1181,9 @@ export default function App() {
                   onChange={(e) => void onLoadFile(e.target.files?.[0] ?? null)}
                 />
               </label>
+              <button type="button" className="btn large" onClick={() => enterWrite()}>
+                Write
+              </button>
               <button type="button" className="btn large" onClick={() => enterGame("fallingLights")}>
                 Falling Lights
               </button>
@@ -1056,26 +1208,32 @@ export default function App() {
       >
         <div className="dock-controls">
           <p className="status">
-            {appMode === "fallingLights"
-              ? "Falling Lights — play C3 (left) and C5 (right) on the beat."
-              : appMode === "echoGhost"
-                ? "Echo Ghost — listen, then replay the pitches in order (C4–B4)."
-                : appMode === "balloonPop"
-                  ? "Balloon Pop — play the note or chord on each balloon before it floats away."
-                  : (feedback?.statusText ?? "Connect MIDI and load a score.")}
+            {appMode === "write"
+              ? "Write — play the piano or on-screen keys to enter notes. Control keys are off here."
+              : appMode === "fallingLights"
+                ? "Falling Lights — play C3 (left) and C5 (right) on the beat."
+                : appMode === "echoGhost"
+                  ? "Echo Ghost — listen, then replay the pitches in order (C4–B4)."
+                  : appMode === "balloonPop"
+                    ? "Balloon Pop — play the note or chord on each balloon before it floats away."
+                    : (feedback?.statusText ?? "Connect MIDI and load a score.")}
           </p>
           <div className="dock-buttons">
             <button
               type="button"
               className="btn"
               onClick={() => engineRef.current.showHint()}
-              disabled={!score || feedback?.done || listenActive || gameActive}
+              disabled={!score || feedback?.done || listenActive || gameActive || writeActive}
             >
               Show hint
             </button>
             <label className="field inline">
               <span>Hands</span>
-              <select value={hand} onChange={(e) => onHandChange(e.target.value as Hand)} disabled={listenActive || gameActive}>
+              <select
+                value={hand}
+                onChange={(e) => onHandChange(e.target.value as Hand)}
+                disabled={listenActive || gameActive || writeActive}
+              >
                 <option value="both">Both</option>
                 <option value="right">Right</option>
                 <option value="left">Left</option>
@@ -1132,7 +1290,7 @@ export default function App() {
         <PianoKeyboard
           states={keyStates}
           onKeyClick={onPianoKeyClick}
-          controlsEnabled={pianoControlsEnabled}
+          controlsEnabled={pianoControlsEnabled && !writeActive}
         />
       </section>
 

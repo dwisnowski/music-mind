@@ -14,3 +14,4 @@ Architecture decisions and project notes for Music Mind.
 - [0008 – Echo Ghost](adr/0008-echo-ghost.md) — Listen→echo mini-game; generated C4–B4 phrases; pitch-order grading (extends 0006)
 - [0009 – Balloon Pop](adr/0009-balloon-pop.md) — Sky-pop mini-game; Easy/Medium/Hard; note/chord balloons; presence-window grading + hit SFX (extends 0006)
 - [0010 – Listen player-piano MIDI](adr/0010-listen-player-piano-midi.md) — Speaker toggle sends timed MIDI Note On/Off so the piano sounds Listen; mute Web Audio; separate from key lights
+- [0011 – Sheet music Write mode](adr/0011-sheet-music-write-mode.md) — Editable WriteDocument + OSMD; step/live entry; Simple/lyrics/Advanced UI; song-form templates; IndexedDB drafts; Listen + Open in Practice
