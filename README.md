@@ -9,6 +9,8 @@ Practice piano with interactive MusicXML, live MIDI feedback, and optional key l
 - Load MusicXML / `.mxl` sheet music (local file or browse remote public-domain libraries: [MuseTrainer](https://musetrainer.github.io/library/), [Arabesque](https://arabesque.app/))
 - Simply Piano–style **Feedback** mode: wait-for-correct-notes, vertical cursor, color feedback
 - **Falling Lights** mini-game: timed L/R targets on C3 / C5 (MIDI) for two-hand timing
+- **Echo Ghost** mini-game: listen and replay short C-major phrases
+- **Balloon Pop** mini-game: Easy/Medium/Hard sky-pop — play labeled notes/chords to pop balloons
 - On-screen 88-key hint keyboard
 - Web MIDI on desktop (Chrome / Edge)
 - iPad via Capacitor + CoreMIDI (Bluetooth MIDI pairing)

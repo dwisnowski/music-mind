@@ -35,13 +35,18 @@ import {
   EchoGhostGame,
   type EchoGhostSnapshot,
 } from "./games/echoGhost";
+import {
+  BalloonPopEngine,
+  BalloonPopGame,
+  type BalloonPopSnapshot,
+} from "./games/balloonPop";
 
 const DOCK_PIN_KEY = "music-mind-dock-pinned";
 const PIANO_CONTROLS_KEY = "mm.pianoControls";
 const PIANO_CLICK_SOUND_KEY = "mm.pianoClickSound";
 
-type AppMode = "practice" | "fallingLights" | "echoGhost";
-type GameId = "fallingLights" | "echoGhost";
+type AppMode = "practice" | "fallingLights" | "echoGhost" | "balloonPop";
+type GameId = "fallingLights" | "echoGhost" | "balloonPop";
 
 function loadPianoControlsEnabled(): boolean {
   try {
@@ -67,6 +72,8 @@ export default function App() {
   const fallingLightsRef = useRef(fallingLightsEngine);
   const [echoGhostEngine] = useState(() => new EchoGhostEngine());
   const echoGhostRef = useRef(echoGhostEngine);
+  const [balloonPopEngine] = useState(() => new BalloonPopEngine());
+  const balloonPopRef = useRef(balloonPopEngine);
   const lightsRef = useRef(new WilliamsLights());
   const playerRef = useRef(new ScorePlayer());
   const pianoClickSynthRef = useRef(new PianoClickSynth());
@@ -113,6 +120,9 @@ export default function App() {
   const [appMode, setAppMode] = useState<AppMode>("practice");
   const [gamesMenuOpen, setGamesMenuOpen] = useState(false);
   const [echoSnap, setEchoSnap] = useState<EchoGhostSnapshot>(() => echoGhostEngine.snapshot());
+  const [balloonSnap, setBalloonSnap] = useState<BalloonPopSnapshot>(() =>
+    balloonPopEngine.snapshot(),
+  );
 
   const closePianoControlsHelp = useCallback(() => {
     setPianoControlsHelpOpen(false);
@@ -121,7 +131,8 @@ export default function App() {
 
   const listenActive = listenTransport !== "idle";
   const listenPlaying = listenTransport === "playing";
-  const gameActive = appMode === "fallingLights" || appMode === "echoGhost";
+  const gameActive =
+    appMode === "fallingLights" || appMode === "echoGhost" || appMode === "balloonPop";
 
   useEffect(() => {
     appModeRef.current = appMode;
@@ -134,13 +145,16 @@ export default function App() {
   useEffect(() => {
     const falling = fallingLightsRef.current;
     const echo = echoGhostRef.current;
+    const balloon = balloonPopRef.current;
     return () => {
       falling.stop();
       echo.stop();
+      balloon.stop();
     };
   }, []);
 
   useEffect(() => echoGhostEngine.subscribe(setEchoSnap), [echoGhostEngine]);
+  useEffect(() => balloonPopEngine.subscribe(setBalloonSnap), [balloonPopEngine]);
 
   useEffect(() => {
     if (!gamesMenuOpen) return;
@@ -213,6 +227,10 @@ export default function App() {
             echoGhostRef.current.noteOn(msg.note);
             return;
           }
+          if (appModeRef.current === "balloonPop") {
+            balloonPopRef.current.noteOn(msg.note, timestamp);
+            return;
+          }
           if (listenTransportRef.current === "idle") {
             engineRef.current.noteOn(msg.note);
           }
@@ -222,6 +240,10 @@ export default function App() {
           }
           heardRef.current.delete(msg.note);
           setHeard(new Set(heardRef.current));
+          if (appModeRef.current === "balloonPop") {
+            balloonPopRef.current.noteOff(msg.note);
+            return;
+          }
           if (appModeRef.current === "fallingLights" || appModeRef.current === "echoGhost") return;
           if (listenTransportRef.current === "idle") {
             engineRef.current.noteOff(msg.note);
@@ -479,6 +501,7 @@ export default function App() {
   const exitGame = useCallback(() => {
     fallingLightsRef.current.stop();
     echoGhostRef.current.stop();
+    balloonPopRef.current.stop();
     setGamesMenuOpen(false);
     setAppMode("practice");
   }, []);
@@ -491,6 +514,7 @@ export default function App() {
       clearListenHeard();
       fallingLightsRef.current.stop();
       echoGhostRef.current.stop();
+      balloonPopRef.current.stop();
       setGamesMenuOpen(false);
       setAppMode(game);
     },
@@ -500,6 +524,7 @@ export default function App() {
   const goHome = useCallback(() => {
     fallingLightsRef.current.stop();
     echoGhostRef.current.stop();
+    balloonPopRef.current.stop();
     setGamesMenuOpen(false);
     setAppMode("practice");
     playerRef.current.stop({ emitEnded: false });
@@ -587,6 +612,16 @@ export default function App() {
       }
       return map;
     }
+    if (appMode === "balloonPop") {
+      for (const n of balloonSnap.expectedMidis) {
+        map.set(n, "expected");
+      }
+      for (const n of heard) {
+        if (map.get(n) === "expected") map.set(n, "correct");
+        else map.set(n, "heard");
+      }
+      return map;
+    }
     if (feedback && !listenActive) {
       for (const n of feedback.expected) {
         map.set(n, feedback.hinted ? "expected" : feedback.heldCorrect.has(n) ? "correct" : "expected");
@@ -599,7 +634,7 @@ export default function App() {
       else if (map.get(n) === "expected") map.set(n, "correct");
     }
     return map;
-  }, [feedback, heard, listenActive, appMode, echoSnap]);
+  }, [feedback, heard, listenActive, appMode, echoSnap, balloonSnap]);
 
   const onLightProfile = useCallback((profile: LightProfile) => {
     setLightProfile(profile);
@@ -637,6 +672,17 @@ export default function App() {
         heardRef.current.delete(midi);
         setHeard(new Set(heardRef.current));
       }, 120);
+      return;
+    }
+
+    if (appModeRef.current === "balloonPop") {
+      balloonPopRef.current.noteOn(midi);
+      // Longer hold so multi-tap chords can stack via the engine grace window.
+      window.setTimeout(() => {
+        balloonPopRef.current.noteOff(midi);
+        heardRef.current.delete(midi);
+        setHeard(new Set(heardRef.current));
+      }, 400);
       return;
     }
 
@@ -728,6 +774,14 @@ export default function App() {
                   >
                     Echo Ghost
                   </button>
+                  <button
+                    type="button"
+                    className="btn"
+                    role="menuitem"
+                    onClick={() => enterGame("balloonPop")}
+                  >
+                    Balloon Pop
+                  </button>
                 </div>
               ) : null}
             </div>
@@ -797,6 +851,12 @@ export default function App() {
           <FallingLightsGame engine={fallingLightsEngine} onExit={exitGame} />
         ) : appMode === "echoGhost" ? (
           <EchoGhostGame engine={echoGhostEngine} onExit={exitGame} />
+        ) : appMode === "balloonPop" ? (
+          <BalloonPopGame
+            engine={balloonPopEngine}
+            onExit={exitGame}
+            soundEnabled={soundEnabled}
+          />
         ) : score ? (
           <div className="score-shell">
             <div className="score-listen-bar" aria-label="Listen controls">
@@ -861,11 +921,15 @@ export default function App() {
               <button type="button" className="linkish" onClick={() => enterGame("fallingLights")}>
                 Falling Lights
               </button>{" "}
-              (timing) or{" "}
+              (timing),{" "}
               <button type="button" className="linkish" onClick={() => enterGame("echoGhost")}>
                 Echo Ghost
               </button>{" "}
-              (ear echo).
+              (ear echo), or{" "}
+              <button type="button" className="linkish" onClick={() => enterGame("balloonPop")}>
+                Balloon Pop
+              </button>{" "}
+              (pop note/chord balloons).
             </p>
             <div className="panel-row wrap" style={{ justifyContent: "center" }}>
               <label className="btn primary file-btn large">
@@ -882,6 +946,9 @@ export default function App() {
               </button>
               <button type="button" className="btn large" onClick={() => enterGame("echoGhost")}>
                 Echo Ghost
+              </button>
+              <button type="button" className="btn large" onClick={() => enterGame("balloonPop")}>
+                Balloon Pop
               </button>
             </div>
             <LibraryBrowser
@@ -902,7 +969,9 @@ export default function App() {
               ? "Falling Lights — play C3 (left) and C5 (right) on the beat."
               : appMode === "echoGhost"
                 ? "Echo Ghost — listen, then replay the pitches in order (C4–B4)."
-                : (feedback?.statusText ?? "Connect MIDI and load a score.")}
+                : appMode === "balloonPop"
+                  ? "Balloon Pop — play the note or chord on each balloon before it floats away."
+                  : (feedback?.statusText ?? "Connect MIDI and load a score.")}
           </p>
           <div className="dock-buttons">
             <button
