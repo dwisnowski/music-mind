@@ -1,7 +1,14 @@
 import { PIANO_HIGH, PIANO_LOW, midiToName } from "../midi/types";
 import { CONTROL_KEY_HINTS, isReservedControlMidi } from "../input/controlKeys";
 
-export type KeyVisualState = "idle" | "expected" | "heard" | "correct" | "wrong";
+export type KeyVisualState =
+  | "idle"
+  | "expected"
+  | "heard"
+  | "correct"
+  | "wrong"
+  | "scale"
+  | "chord";
 
 interface PianoKeyboardProps {
   states: Map<number, KeyVisualState>;

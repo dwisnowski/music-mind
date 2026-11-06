@@ -42,13 +42,38 @@ import {
   type BalloonPopSnapshot,
 } from "./games/balloonPop";
 import { WriteWorkspace } from "./ui/WriteWorkspace";
+import {
+  FreePracticeEngine,
+  FreePracticeWorkspace,
+  chordKeyOf,
+  type FreePracticePlayMode,
+  type FreePracticeSnapshot,
+  type TheoryTab,
+} from "./freePractice";
+import {
+  buildScaleMidis,
+  chordMidis,
+  diatonicChords,
+  getGenre,
+  getRiff,
+  resolveRiffMidis,
+  scalePitchClasses,
+  type GenreId,
+  type ScaleId,
+} from "./theory";
 
 const DOCK_PIN_KEY = "music-mind-dock-pinned";
 const PIANO_CONTROLS_KEY = "mm.pianoControls";
 const PIANO_CLICK_SOUND_KEY = "mm.pianoClickSound";
 const LISTEN_MIDI_SOUND_KEY = "mm.listenMidiSound";
 
-type AppMode = "practice" | "write" | "fallingLights" | "echoGhost" | "balloonPop";
+type AppMode =
+  | "practice"
+  | "write"
+  | "freePractice"
+  | "fallingLights"
+  | "echoGhost"
+  | "balloonPop";
 type GameId = "fallingLights" | "echoGhost" | "balloonPop";
 
 function loadPianoControlsEnabled(): boolean {
@@ -85,6 +110,8 @@ export default function App() {
   const echoGhostRef = useRef(echoGhostEngine);
   const [balloonPopEngine] = useState(() => new BalloonPopEngine());
   const balloonPopRef = useRef(balloonPopEngine);
+  const [freePracticeEngine] = useState(() => new FreePracticeEngine());
+  const freePracticeRef = useRef(freePracticeEngine);
   const lightsRef = useRef(new WilliamsLights());
   const playerRef = useRef(new ScorePlayer());
   const pianoClickSynthRef = useRef(new PianoClickSynth());
@@ -146,6 +173,14 @@ export default function App() {
   const [balloonSnap, setBalloonSnap] = useState<BalloonPopSnapshot>(() =>
     balloonPopEngine.snapshot(),
   );
+  const [fpSnap, setFpSnap] = useState<FreePracticeSnapshot>(() => freePracticeEngine.snapshot());
+  const [fpGenreId, setFpGenreId] = useState<GenreId>("blues");
+  const [fpRootPc, setFpRootPc] = useState(0);
+  const [fpScaleId, setFpScaleId] = useState<ScaleId>("blues");
+  const [fpPlayMode, setFpPlayMode] = useState<FreePracticePlayMode>("free");
+  const [fpChordKey, setFpChordKey] = useState<string | null>(null);
+  const [fpRiffId, setFpRiffId] = useState<string | null>(null);
+  const [fpTheoryTab, setFpTheoryTab] = useState<TheoryTab>("chords");
 
   const closePianoControlsHelp = useCallback(() => {
     setPianoControlsHelpOpen(false);
@@ -155,6 +190,7 @@ export default function App() {
   const listenActive = listenTransport !== "idle";
   const listenPlaying = listenTransport === "playing";
   const writeActive = appMode === "write";
+  const freePracticeActive = appMode === "freePractice";
   const gameActive =
     appMode === "fallingLights" || appMode === "echoGhost" || appMode === "balloonPop";
 
@@ -178,15 +214,18 @@ export default function App() {
     const falling = fallingLightsRef.current;
     const echo = echoGhostRef.current;
     const balloon = balloonPopRef.current;
+    const freePractice = freePracticeRef.current;
     return () => {
       falling.stop();
       echo.stop();
       balloon.stop();
+      freePractice.stop();
     };
   }, []);
 
   useEffect(() => echoGhostEngine.subscribe(setEchoSnap), [echoGhostEngine]);
   useEffect(() => balloonPopEngine.subscribe(setBalloonSnap), [balloonPopEngine]);
+  useEffect(() => freePracticeEngine.subscribe(setFpSnap), [freePracticeEngine]);
 
   useEffect(() => {
     if (!gamesMenuOpen) return;
@@ -254,6 +293,12 @@ export default function App() {
             writeNoteSinkRef.current?.noteOn(msg.note, timestamp);
             return;
           }
+          if (appModeRef.current === "freePractice") {
+            heardRef.current.add(msg.note);
+            setHeard(new Set(heardRef.current));
+            freePracticeRef.current.noteOn(msg.note);
+            return;
+          }
           if (pianoControlsEnabledRef.current) {
             const result = controlKeysRef.current.handleNoteOn(msg.note);
             if (result.consumed) {
@@ -285,6 +330,11 @@ export default function App() {
             writeNoteSinkRef.current?.noteOff(msg.note, timestamp);
             return;
           }
+          if (appModeRef.current === "freePractice") {
+            heardRef.current.delete(msg.note);
+            setHeard(new Set(heardRef.current));
+            return;
+          }
           if (pianoControlsEnabledRef.current && isReservedControlMidi(msg.note)) {
             return;
           }
@@ -308,7 +358,7 @@ export default function App() {
   }, []);
 
   useEffect(() => {
-    if (listenActive || gameActive) return;
+    if (listenActive || gameActive || freePracticeActive) return;
     if (!feedback) return;
     if (feedback.hinted || feedback.expected.size > 0) {
       const profile = lightsRef.current.getProfile();
@@ -317,7 +367,40 @@ export default function App() {
       }
     }
     if (feedback.done) lightsRef.current.clear();
-  }, [feedback, listenActive, gameActive]);
+  }, [feedback, listenActive, gameActive, freePracticeActive]);
+
+  const fpScaleMidis = useMemo(() => {
+    if (!freePracticeActive) return [] as number[];
+    return buildScaleMidis(fpRootPc, fpScaleId);
+  }, [freePracticeActive, fpRootPc, fpScaleId]);
+
+  const fpChordToneMidis = useMemo(() => {
+    if (!freePracticeActive || fpChordKey == null) return [] as number[];
+    const chord = diatonicChords(fpRootPc, fpScaleId).find((c) => chordKeyOf(c) === fpChordKey);
+    return chord ? chordMidis(chord) : [];
+  }, [freePracticeActive, fpChordKey, fpRootPc, fpScaleId]);
+
+  const fpLedExpected = useMemo(() => {
+    if (!freePracticeActive) return new Set<number>();
+    if (fpPlayMode === "guided") {
+      return fpSnap.expectedMidi != null ? new Set([fpSnap.expectedMidi]) : new Set<number>();
+    }
+    if (fpChordToneMidis.length > 0) return new Set(fpChordToneMidis);
+    return new Set(fpScaleMidis);
+  }, [
+    freePracticeActive,
+    fpPlayMode,
+    fpSnap.expectedMidi,
+    fpChordToneMidis,
+    fpScaleMidis,
+  ]);
+
+  useEffect(() => {
+    if (!freePracticeActive || listenActive) return;
+    const profile = lightsRef.current.getProfile();
+    if (profile.mode !== "noteOn") return;
+    lightsRef.current.setExpected(fpLedExpected);
+  }, [freePracticeActive, listenActive, fpLedExpected]);
 
   useEffect(() => {
     try {
@@ -586,6 +669,7 @@ export default function App() {
     fallingLightsRef.current.stop();
     echoGhostRef.current.stop();
     balloonPopRef.current.stop();
+    freePracticeRef.current.stop();
     setGamesMenuOpen(false);
     setAppMode("practice");
   }, []);
@@ -599,6 +683,7 @@ export default function App() {
       fallingLightsRef.current.stop();
       echoGhostRef.current.stop();
       balloonPopRef.current.stop();
+      freePracticeRef.current.stop();
       setGamesMenuOpen(false);
       setWriteScore(null);
       setWriteInitialXml(null);
@@ -616,6 +701,7 @@ export default function App() {
       fallingLightsRef.current.stop();
       echoGhostRef.current.stop();
       balloonPopRef.current.stop();
+      freePracticeRef.current.stop();
       setGamesMenuOpen(false);
       setWriteInitialXml(opts?.xml ?? scoreRef.current?.xml ?? null);
       setWriteInitialTitle(opts?.title ?? scoreRef.current?.title);
@@ -624,6 +710,91 @@ export default function App() {
     },
     [clearListenHeard],
   );
+
+  const enterFreePractice = useCallback(() => {
+    playerRef.current.stop({ emitEnded: false });
+    setListenTransport("idle");
+    setListenEventIndex(null);
+    clearListenHeard();
+    fallingLightsRef.current.stop();
+    echoGhostRef.current.stop();
+    balloonPopRef.current.stop();
+    freePracticeRef.current.clear();
+    setGamesMenuOpen(false);
+    setWriteScore(null);
+    setWriteInitialXml(null);
+    setAppMode("freePractice");
+  }, [clearListenHeard]);
+
+  const exitFreePractice = useCallback(() => {
+    freePracticeRef.current.stop();
+    lightsRef.current.clear();
+    heardRef.current.clear();
+    setHeard(new Set());
+    setAppMode("practice");
+  }, []);
+
+  const onFpGenre = useCallback((id: GenreId) => {
+    const g = getGenre(id);
+    setFpGenreId(id);
+    setFpScaleId(g.defaultScale);
+    setFpRiffId(null);
+    setFpChordKey(null);
+    freePracticeRef.current.clear();
+  }, []);
+
+  const onFpRiffId = useCallback(
+    (id: string | null) => {
+      setFpRiffId(id);
+      if (!id) {
+        freePracticeRef.current.clear();
+        return;
+      }
+      const riff = getRiff(id);
+      if (!riff) return;
+      setFpScaleId(riff.scaleId);
+      if (fpPlayMode === "guided") {
+        freePracticeRef.current.loadPhrase(resolveRiffMidis(riff, fpRootPc, riff.scaleId));
+      }
+    },
+    [fpPlayMode, fpRootPc],
+  );
+
+  const onFpPlayMode = useCallback(
+    (mode: FreePracticePlayMode) => {
+      setFpPlayMode(mode);
+      if (mode === "free") {
+        freePracticeRef.current.clear();
+        return;
+      }
+      if (fpRiffId) {
+        const riff = getRiff(fpRiffId);
+        if (riff) {
+          freePracticeRef.current.loadPhrase(resolveRiffMidis(riff, fpRootPc, fpScaleId));
+        }
+      }
+    },
+    [fpRiffId, fpRootPc, fpScaleId],
+  );
+
+  const onFpDemo = useCallback(() => {
+    if (!fpRiffId) return;
+    const riff = getRiff(fpRiffId);
+    if (!riff) return;
+    freePracticeRef.current.startDemo(resolveRiffMidis(riff, fpRootPc, fpScaleId));
+  }, [fpRiffId, fpRootPc, fpScaleId]);
+
+  const onFpRestartGuided = useCallback(() => {
+    freePracticeRef.current.restart();
+  }, []);
+
+  // Keep guided phrase in sync when root/scale change with a riff selected.
+  useEffect(() => {
+    if (!freePracticeActive || fpPlayMode !== "guided" || !fpRiffId) return;
+    const riff = getRiff(fpRiffId);
+    if (!riff) return;
+    freePracticeRef.current.loadPhrase(resolveRiffMidis(riff, fpRootPc, fpScaleId));
+  }, [freePracticeActive, fpPlayMode, fpRiffId, fpRootPc, fpScaleId]);
 
   const exitWrite = useCallback(() => {
     playerRef.current.stop({ emitEnded: false });
@@ -651,6 +822,7 @@ export default function App() {
     fallingLightsRef.current.stop();
     echoGhostRef.current.stop();
     balloonPopRef.current.stop();
+    freePracticeRef.current.stop();
     setGamesMenuOpen(false);
     setAppMode("practice");
     playerRef.current.stop({ emitEnded: false });
@@ -752,6 +924,28 @@ export default function App() {
       }
       return map;
     }
+    if (appMode === "freePractice") {
+      if (fpPlayMode === "free") {
+        const chordSet = new Set(fpChordToneMidis);
+        for (const n of fpScaleMidis) {
+          map.set(n, chordSet.has(n) ? "chord" : "scale");
+        }
+      } else {
+        if (fpSnap.expectedMidi != null) map.set(fpSnap.expectedMidi, "expected");
+        if (fpSnap.wrongFlash != null) map.set(fpSnap.wrongFlash, "wrong");
+      }
+      const scalePcs = new Set(scalePitchClasses(fpRootPc, fpScaleId));
+      for (const n of heard) {
+        if (map.get(n) === "expected" || map.get(n) === "chord" || map.get(n) === "scale") {
+          map.set(n, "correct");
+        } else if (scalePcs.has(n % 12)) {
+          map.set(n, "correct");
+        } else {
+          map.set(n, "heard");
+        }
+      }
+      return map;
+    }
     if (feedback && !listenActive) {
       for (const n of feedback.expected) {
         map.set(n, feedback.hinted ? "expected" : feedback.heldCorrect.has(n) ? "correct" : "expected");
@@ -764,7 +958,20 @@ export default function App() {
       else if (map.get(n) === "expected") map.set(n, "correct");
     }
     return map;
-  }, [feedback, heard, listenActive, appMode, echoSnap, balloonSnap]);
+  }, [
+    feedback,
+    heard,
+    listenActive,
+    appMode,
+    echoSnap,
+    balloonSnap,
+    fpPlayMode,
+    fpScaleMidis,
+    fpChordToneMidis,
+    fpSnap,
+    fpRootPc,
+    fpScaleId,
+  ]);
 
   const onLightProfile = useCallback((profile: LightProfile) => {
     setLightProfile(profile);
@@ -784,6 +991,20 @@ export default function App() {
         heardRef.current.delete(midi);
         setHeard(new Set(heardRef.current));
       }, 120);
+      return;
+    }
+
+    if (appModeRef.current === "freePractice") {
+      if (soundEnabledRef.current) {
+        void pianoClickSynthRef.current.play(midi);
+      }
+      heardRef.current.add(midi);
+      setHeard(new Set(heardRef.current));
+      freePracticeRef.current.noteOn(midi);
+      window.setTimeout(() => {
+        heardRef.current.delete(midi);
+        setHeard(new Set(heardRef.current));
+      }, 220);
       return;
     }
 
@@ -889,6 +1110,15 @@ export default function App() {
             >
               Leave Write
             </button>
+          ) : freePracticeActive ? (
+            <button
+              type="button"
+              className="btn game-active"
+              onClick={exitFreePractice}
+              title="Leave Free Practice and return to practice"
+            >
+              Leave Free Practice
+            </button>
           ) : gameActive ? (
             <button
               type="button"
@@ -942,9 +1172,18 @@ export default function App() {
           )}
           <button
             type="button"
+            className={`btn${freePracticeActive ? " primary" : ""}`}
+            onClick={() => enterFreePractice()}
+            disabled={gameActive || writeActive}
+            title="Free Practice — scales, riffs, and theory helpers"
+          >
+            Free Practice
+          </button>
+          <button
+            type="button"
             className={`btn${writeActive ? " primary" : ""}`}
             onClick={() => enterWrite()}
-            disabled={gameActive}
+            disabled={gameActive || freePracticeActive}
             title="Write sheet music by playing"
           >
             Write
@@ -954,17 +1193,21 @@ export default function App() {
             className="btn"
             onClick={goHome}
             title="Browse scores"
-            disabled={(!score && !writeActive) || gameActive}
+            disabled={(!score && !writeActive && !freePracticeActive) || gameActive}
           >
             Library
           </button>
-          <label className={`btn primary file-btn${gameActive || writeActive ? " disabled" : ""}`}>
+          <label
+            className={`btn primary file-btn${
+              gameActive || writeActive || freePracticeActive ? " disabled" : ""
+            }`}
+          >
             Load score
             <input
               type="file"
               accept=".musicxml,.xml,.mxl,application/vnd.recordare.musicxml+xml,application/xml,text/xml"
               hidden
-              disabled={gameActive || writeActive}
+              disabled={gameActive || writeActive || freePracticeActive}
               onChange={(e) => void onLoadFile(e.target.files?.[0] ?? null)}
             />
           </label>
@@ -1033,6 +1276,28 @@ export default function App() {
             onExit={exitWrite}
             noteSinkRef={writeNoteSinkRef}
             feedbackPlaceholder={null}
+          />
+        ) : appMode === "freePractice" ? (
+          <FreePracticeWorkspace
+            genreId={fpGenreId}
+            rootPc={fpRootPc}
+            scaleId={fpScaleId}
+            playMode={fpPlayMode}
+            chordKey={fpChordKey}
+            riffId={fpRiffId}
+            theoryTab={fpTheoryTab}
+            heldMidis={heard}
+            guided={fpSnap}
+            onGenre={onFpGenre}
+            onRoot={setFpRootPc}
+            onScale={setFpScaleId}
+            onPlayMode={onFpPlayMode}
+            onChordKey={setFpChordKey}
+            onRiffId={onFpRiffId}
+            onTheoryTab={setFpTheoryTab}
+            onDemo={onFpDemo}
+            onRestartGuided={onFpRestartGuided}
+            onExit={exitFreePractice}
           />
         ) : appMode === "fallingLights" ? (
           <FallingLightsGame engine={fallingLightsEngine} onExit={exitGame} />
@@ -1154,6 +1419,10 @@ export default function App() {
               Drop a MusicXML or compressed <code>.mxl</code> file, pick a score from the library,
               connect your Williams piano over MIDI, and play — the cursor waits for the correct notes.
               Or{" "}
+              <button type="button" className="linkish" onClick={() => enterFreePractice()}>
+                free practice
+              </button>{" "}
+              with lit scales and riffs,{" "}
               <button type="button" className="linkish" onClick={() => enterWrite()}>
                 write your own sheet music
               </button>
@@ -1210,20 +1479,31 @@ export default function App() {
           <p className="status">
             {appMode === "write"
               ? "Write — play the piano or on-screen keys to enter notes. Control keys are off here."
-              : appMode === "fallingLights"
-                ? "Falling Lights — play C3 (left) and C5 (right) on the beat."
-                : appMode === "echoGhost"
-                  ? "Echo Ghost — listen, then replay the pitches in order (C4–B4)."
-                  : appMode === "balloonPop"
-                    ? "Balloon Pop — play the note or chord on each balloon before it floats away."
-                    : (feedback?.statusText ?? "Connect MIDI and load a score.")}
+              : appMode === "freePractice"
+                ? fpPlayMode === "guided"
+                  ? "Free Practice (Guided) — play the lit next note; Demo walks the riff for you."
+                  : "Free Practice — soft lights are scale tones; stronger lights are chord tones."
+                : appMode === "fallingLights"
+                  ? "Falling Lights — play C3 (left) and C5 (right) on the beat."
+                  : appMode === "echoGhost"
+                    ? "Echo Ghost — listen, then replay the pitches in order (C4–B4)."
+                    : appMode === "balloonPop"
+                      ? "Balloon Pop — play the note or chord on each balloon before it floats away."
+                      : (feedback?.statusText ?? "Connect MIDI and load a score.")}
           </p>
           <div className="dock-buttons">
             <button
               type="button"
               className="btn"
               onClick={() => engineRef.current.showHint()}
-              disabled={!score || feedback?.done || listenActive || gameActive || writeActive}
+              disabled={
+                !score ||
+                feedback?.done ||
+                listenActive ||
+                gameActive ||
+                writeActive ||
+                freePracticeActive
+              }
             >
               Show hint
             </button>
@@ -1232,7 +1512,7 @@ export default function App() {
               <select
                 value={hand}
                 onChange={(e) => onHandChange(e.target.value as Hand)}
-                disabled={listenActive || gameActive || writeActive}
+                disabled={listenActive || gameActive || writeActive || freePracticeActive}
               >
                 <option value="both">Both</option>
                 <option value="right">Right</option>
@@ -1290,7 +1570,7 @@ export default function App() {
         <PianoKeyboard
           states={keyStates}
           onKeyClick={onPianoKeyClick}
-          controlsEnabled={pianoControlsEnabled && !writeActive}
+          controlsEnabled={pianoControlsEnabled && !writeActive && !freePracticeActive}
         />
       </section>
 
