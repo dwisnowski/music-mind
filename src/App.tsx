@@ -1581,6 +1581,7 @@ export default function App() {
       <footer className="wiz-footer">
         A <a href="https://www.wildideazone.com/">Wild Idea Zone</a> project ·{" "}
         <a href="https://www.wildideazone.com/projects/music-mind">About this build</a> ·{" "}
+        <a href="https://github.com/dwisnowski/music-mind">GitHub</a> ·{" "}
         <a href="https://www.wildideazone.com/projects">More projects</a>
       </footer>
       {!homeActive && dockPinned ? (

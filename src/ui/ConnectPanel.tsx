@@ -151,13 +151,12 @@ export function ConnectPanel({
 
           {inputs.length === 0 && (
             <p className="muted">
-              No MIDI inputs yet. Enable Bluetooth MIDI on the piano, then follow the connection notes
-              below and refresh.
+              No MIDI inputs yet. Connect via USB or Bluetooth (notes below), then refresh.
             </p>
           )}
 
           <details className="connect-notes">
-            <summary>Connection notes</summary>
+            <summary>Bluetooth MIDI</summary>
             {ios ? (
               <ol>
                 <li>Turn on the piano and enable Bluetooth MIDI.</li>
@@ -209,6 +208,44 @@ export function ConnectPanel({
                 on-screen keyboard still shows hints.
               </p>
             </div>
+          </details>
+
+          <details className="connect-notes">
+            <summary>USB MIDI</summary>
+            {ios ? (
+              <>
+                <p className="muted small">
+                  On iPad, Bluetooth MIDI is the primary path. Class-compliant USB MIDI may appear if
+                  CoreMIDI sees the cable connection.
+                </p>
+                <ol>
+                  <li>Connect the keyboard to the iPad with a USB / USB-C cable (adapter if needed).</li>
+                  <li>Power on the keyboard and wait for iPad to recognize it.</li>
+                  <li>
+                    Tap <strong>Refresh devices</strong>. If an input appears, tap{" "}
+                    <strong>Connect</strong>.
+                  </li>
+                </ol>
+              </>
+            ) : (
+              <>
+                <p className="muted small">
+                  Wired USB MIDI works in Chrome or Edge via Web MIDI — same Connect panel as Bluetooth.
+                  Class-compliant USB keyboards usually appear without drivers.
+                </p>
+                <ol>
+                  <li>Plug the keyboard into the computer with a USB cable and power it on.</li>
+                  <li>
+                    Confirm the device shows in <strong>Audio MIDI Setup</strong> (MIDI Studio) if it does
+                    not appear here after refresh.
+                  </li>
+                  <li>
+                    Return here, tap <strong>Refresh devices</strong>, select the USB input, then{" "}
+                    <strong>Connect</strong>.
+                  </li>
+                </ol>
+              </>
+            )}
           </details>
         </>
       )}

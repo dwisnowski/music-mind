@@ -2,7 +2,9 @@
 
 Practice piano with interactive MusicXML, live MIDI feedback, and optional key lights — a [Wild Idea Zone](https://www.wildideazone.com/) project.
 
-**Live:** [musicmind.wildideazone.com](https://musicmind.wildideazone.com) · [About this build](https://www.wildideazone.com/projects/music-mind)
+**Live:** [musicmind.wildideazone.com](https://musicmind.wildideazone.com) · [About this build](https://www.wildideazone.com/projects/music-mind) · [GitHub](https://github.com/dwisnowski/music-mind)
+
+Contributions welcome — see [Contributing](./CONTRIBUTING.md) (humans) and [AGENTS.md](./AGENTS.md) (AI coding agents). Architecture decisions live in [`docs/`](./docs/README.md).
 
 ## Features
 
@@ -25,6 +27,8 @@ make run
 ```
 
 Then open Chrome at [http://localhost:5173](http://localhost:5173), allow MIDI, pair the piano (macOS: Audio MIDI Setup → Bluetooth), and load a score — **Quick start** samples (Für Elise, Clair de Lune, Gymnopédie No. 1, Twinkle) ship with the app; the empty-state library browser loads **MuseTrainer** and **Arabesque** public-domain catalogs over the network without vendoring those repos.
+
+Before opening a PR, run `make lint` and `make build`, then smoke-test the flow you changed. Full contributor setup, PR expectations, and a code map: [CONTRIBUTING.md](./CONTRIBUTING.md).
 
 | Target | What it does |
 | --- | --- |
