@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type MutableRefObject } from "react";
-import { ScoreView, type ListenTransport } from "./ScoreView";
+import { ScoreView, type ListenTransport, type WriteNoteClickInfo } from "./ScoreView";
 import { SongFormHelper } from "./SongFormHelper";
 import { SongFormPicker } from "./SongFormPicker";
 import { LibraryBrowser } from "./LibraryBrowser";
@@ -15,12 +15,16 @@ import {
   draftToDocument,
   deleteDraft,
   downloadMusicXml,
+  findWriteNoteIdAt,
   fromMusicXml,
   listDrafts,
+  listOrderedWriteNotes,
   presetToSections,
+  primarySelectionId,
   saveClip,
   saveDraft,
   toMusicXml,
+  writeNoteIsSelected,
   type ArticulationId,
   type DurationId,
   type DynamicId,
@@ -100,6 +104,7 @@ export function WriteWorkspace({
     stackRef.current = new WriteCommandStack(initialDoc);
   }
   const [doc, setDoc] = useState<WriteDocument>(initialDoc);
+  const [contentEpoch, setContentEpoch] = useState(0);
   const [xml, setXml] = useState(() => toMusicXml(initialDoc));
   const [draftId, setDraftId] = useState<string | null>(null);
   const [drafts, setDrafts] = useState<WriteDraftRecord[]>([]);
@@ -152,14 +157,15 @@ export function WriteWorkspace({
     const stack = stackRef.current;
     return stack.subscribe((d) => {
       setDoc(d);
-      // Debounce OSMD refresh
+      setContentEpoch(stack.contentEpoch);
     });
   }, []);
 
+  // Debounce OSMD refresh only when musical content changes (not bare selection).
   useEffect(() => {
-    const t = window.setTimeout(() => refreshXml(doc), 280);
+    const t = window.setTimeout(() => refreshXml(docRef.current), 280);
     return () => window.clearTimeout(t);
-  }, [doc, refreshXml]);
+  }, [contentEpoch, refreshXml]);
 
   // Autosave
   useEffect(() => {
@@ -452,18 +458,132 @@ export function WriteWorkspace({
     }
   };
 
+  const orderedNotes = useMemo(() => listOrderedWriteNotes(doc), [doc]);
+  const selectedIdSet = useMemo(() => new Set(doc.selectionIds), [doc.selectionIds]);
+  const hasSelection = doc.selectionIds.length > 0;
+  const primaryId = primarySelectionId(doc);
+
   const selectedNote = useMemo(() => {
-    if (!doc.selectionId) return null;
+    if (!primaryId) return null;
     for (const m of doc.measures) {
-      const n = m.notes.find((x) => x.id === doc.selectionId);
+      const n = m.notes.find((x) => x.id === primaryId);
       if (n) return n;
     }
     return null;
-  }, [doc]);
+  }, [doc, primaryId]);
 
   useEffect(() => {
     setLyricDraft(selectedNote?.lyric?.text ?? "");
   }, [selectedNote?.id, selectedNote?.lyric?.text]);
+
+  const resolveNoteId = useCallback(
+    (info: WriteNoteClickInfo) =>
+      findWriteNoteIdAt(orderedNotes, info.absoluteOnset, info.midi, info.staffIndex),
+    [orderedNotes],
+  );
+
+  const noteIsSelected = useCallback(
+    (info: { absoluteOnset: number; midi: number | null; staffIndex: number | null }) =>
+      writeNoteIsSelected(
+        orderedNotes,
+        selectedIdSet,
+        info.absoluteOnset,
+        info.midi,
+        info.staffIndex,
+      ),
+    [orderedNotes, selectedIdSet],
+  );
+
+  const onSelectNote = useCallback((noteId: string, info: WriteNoteClickInfo) => {
+    const mode =
+      info.shiftKey ? "range" : info.metaKey || info.ctrlKey ? "toggle" : "replace";
+    const found = orderedNotes.find((n) => n.id === noteId);
+    if (found) {
+      stackRef.current.dispatch({
+        type: "setCursor",
+        measureIndex: found.measureIndex,
+        onsetQuarters: found.onsetInMeasure,
+        staffIndex: found.note.staffIndex,
+        voice: found.note.voice,
+      });
+    }
+    stackRef.current.dispatch({ type: "select", noteId, mode });
+    const count = stackRef.current.document.selectionIds.length;
+    setStatus(
+      count
+        ? `${count} note${count === 1 ? "" : "s"} selected. Delete, ↑/↓ shift, or pick a duration.`
+        : "Selection cleared.",
+    );
+  }, [orderedNotes]);
+
+  const applyDuration = useCallback(
+    (duration: DurationId) => {
+      if (hasSelection) {
+        stackRef.current.dispatch({ type: "setSelectionDuration", duration });
+        setStatus(`Set duration to ${duration} on ${doc.selectionIds.length} note(s).`);
+        return;
+      }
+      stackRef.current.dispatch({ type: "setStepDuration", duration });
+    },
+    [doc.selectionIds.length, hasSelection],
+  );
+
+  const shiftSelection = useCallback(
+    (semitones: number) => {
+      if (!hasSelection) return;
+      stackRef.current.dispatch({ type: "shiftSelection", semitones });
+      const dir = semitones > 0 ? "up" : "down";
+      const amount = Math.abs(semitones);
+      setStatus(
+        `Shifted ${doc.selectionIds.length} note(s) ${dir} ${amount} semitone${amount === 1 ? "" : "s"}.`,
+      );
+    },
+    [doc.selectionIds.length, hasSelection],
+  );
+
+  useEffect(() => {
+    const onKeyDown = (e: KeyboardEvent) => {
+      const target = e.target as HTMLElement | null;
+      const tag = target?.tagName?.toLowerCase();
+      if (tag === "input" || tag === "textarea" || tag === "select" || target?.isContentEditable) {
+        return;
+      }
+      if (!hasSelection) return;
+      if (e.key === "Delete" || e.key === "Backspace") {
+        e.preventDefault();
+        stackRef.current.dispatch({ type: "deleteSelection" });
+        setStatus("Deleted selection.");
+        return;
+      }
+      if (e.key === "Escape") {
+        e.preventDefault();
+        stackRef.current.dispatch({ type: "select", noteId: null });
+        setStatus("Selection cleared.");
+        return;
+      }
+      if (e.key === "ArrowUp") {
+        e.preventDefault();
+        shiftSelection(e.shiftKey ? 12 : 1);
+        return;
+      }
+      if (e.key === "ArrowDown") {
+        e.preventDefault();
+        shiftSelection(e.shiftKey ? -12 : -1);
+      }
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [hasSelection, shiftSelection]);
+
+  const writeSelection = useMemo(
+    () => ({
+      selectedIds: doc.selectionIds,
+      resolveNoteId,
+      noteIsSelected,
+      onSelect: onSelectNote,
+    }),
+    [doc.selectionIds, noteIsSelected, onSelectNote, resolveNoteId],
+  );
 
   const complexity: WriteComplexity = doc.writeMode;
   const showLyrics = complexity === "lyrics" || complexity === "advanced";
@@ -629,26 +749,76 @@ export function WriteWorkspace({
       <div className="write-tools">
         <div className="write-note-group" role="group" aria-label="Note writing">
           <span className="write-note-group-label">Notes</span>
-          <div className="write-duration-palette" role="group" aria-label="Note duration">
-            {DURATION_BUTTONS.map((d) => (
-              <button
-                key={d.id}
-                type="button"
-                className={`btn${doc.stepDuration === d.id ? " primary" : ""}`}
-                onClick={() =>
-                  stackRef.current.dispatch({ type: "setStepDuration", duration: d.id })
-                }
-              >
-                {d.label}
-              </button>
-            ))}
-            <button
-              type="button"
-              className="btn"
-              onClick={() => stackRef.current.dispatch({ type: "insertRest" })}
+          <details className="write-select-help">
+            <summary
+              className="btn write-select-help-btn"
+              title="How to select and edit notes"
+              aria-label="How to select and edit notes"
             >
-              Rest
-            </button>
+              ?
+            </summary>
+            <div className="write-select-help-panel" role="note">
+              <p className="write-select-help-title">Select notes on the score</p>
+              <ul>
+                <li>
+                  <kbd>Click</kbd> a note to select it (highlighted in teal).
+                </li>
+                <li>
+                  <kbd>Shift</kbd>+click to select a sequential range from the
+                  first selection.
+                </li>
+                <li>
+                  <kbd>Ctrl</kbd> / <kbd>⌘</kbd>+click to add or remove
+                  non-sequential notes.
+                </li>
+                <li>
+                  <kbd>Esc</kbd> clears the selection.
+                </li>
+              </ul>
+              <p className="write-select-help-title">Edit the selection</p>
+              <ul>
+                <li>
+                  <strong>Delete</strong> or <kbd>Delete</kbd> / <kbd>Backspace</kbd>{" "}
+                  removes selected notes.
+                </li>
+                <li>
+                  <strong>↑</strong> / <strong>↓</strong> (or arrow keys) shift pitch
+                  by a semitone; <kbd>Shift</kbd>+arrow shifts by an octave.
+                </li>
+                <li>
+                  Duration buttons (<strong>1</strong>, <strong>1/2</strong>,{" "}
+                  <strong>1/4</strong>, <strong>1/8</strong>, …) change the selected
+                  notes’ length.
+                </li>
+              </ul>
+            </div>
+          </details>
+          <div className="write-duration-palette" role="group" aria-label="Note tools">
+            <div className="mode-group write-duration-group" role="group" aria-label="Note duration">
+              {DURATION_BUTTONS.map((d) => (
+                <button
+                  key={d.id}
+                  type="button"
+                  className={`btn mode-seg${doc.stepDuration === d.id ? " primary" : ""}`}
+                  title={
+                    hasSelection
+                      ? `Set selected note(s) to ${d.label}`
+                      : `Step-entry duration ${d.label}`
+                  }
+                  onClick={() => applyDuration(d.id)}
+                >
+                  {d.label}
+                </button>
+              ))}
+              <button
+                type="button"
+                className="btn mode-seg"
+                title="Insert a rest at the cursor"
+                onClick={() => stackRef.current.dispatch({ type: "insertRest" })}
+              >
+                Rest
+              </button>
+            </div>
             <button
               type="button"
               className={`btn${doc.tieNext ? " primary" : ""}`}
@@ -659,6 +829,24 @@ export function WriteWorkspace({
             >
               Tie
             </button>
+            <button
+              type="button"
+              className="btn"
+              disabled={!hasSelection}
+              title="Shift selection down a semitone (↓)"
+              onClick={() => shiftSelection(-1)}
+            >
+              ↓
+            </button>
+            <button
+              type="button"
+              className="btn"
+              disabled={!hasSelection}
+              title="Shift selection up a semitone (↑)"
+              onClick={() => shiftSelection(1)}
+            >
+              ↑
+            </button>
             <button type="button" className="btn" onClick={() => stackRef.current.undo()}>
               Undo
             </button>
@@ -668,10 +856,14 @@ export function WriteWorkspace({
             <button
               type="button"
               className="btn"
-              onClick={() => stackRef.current.dispatch({ type: "deleteSelection" })}
-              disabled={!doc.selectionId}
+              onClick={() => {
+                stackRef.current.dispatch({ type: "deleteSelection" });
+                setStatus("Deleted selection.");
+              }}
+              disabled={!hasSelection}
+              title="Delete selected notes (Delete)"
             >
-              Delete
+              Delete{hasSelection && doc.selectionIds.length > 1 ? ` (${doc.selectionIds.length})` : ""}
             </button>
             <button
               type="button"
@@ -685,25 +877,38 @@ export function WriteWorkspace({
 
         <span className="write-tools-sep" aria-hidden="true" />
 
-        <button
-          type="button"
-          className={`btn${entryMode === "step" && captureState === "idle" ? " primary" : ""}`}
-          onClick={() => {
-            if (captureState !== "idle") stopRecord();
-            setEntryMode("step");
-          }}
-        >
-          Step
-        </button>
-        {captureState === "idle" ? (
-          <button type="button" className="btn" onClick={() => void startRecord()}>
-            Record
+        <div className="mode-group write-entry-group" role="group" aria-label="Entry mode">
+          <button
+            type="button"
+            className={`btn mode-seg${entryMode === "step" && captureState === "idle" ? " primary" : ""}`}
+            onClick={() => {
+              if (captureState !== "idle") stopRecord();
+              setEntryMode("step");
+            }}
+            title="Insert notes one at a time from the keyboard"
+          >
+            Step
           </button>
-        ) : (
-          <button type="button" className="btn primary listening" onClick={stopRecord}>
-            Stop ({captureState})
-          </button>
-        )}
+          {captureState === "idle" ? (
+            <button
+              type="button"
+              className={`btn mode-seg${entryMode === "record" ? " primary" : ""}`}
+              onClick={() => void startRecord()}
+              title="Record with metronome and quantize into the score"
+            >
+              Record
+            </button>
+          ) : (
+            <button
+              type="button"
+              className="btn mode-seg primary listening"
+              onClick={stopRecord}
+              title="Stop recording and merge into the score"
+            >
+              Stop ({captureState})
+            </button>
+          )}
+        </div>
         <button
           type="button"
           className={`btn${trayOpen || trayTakeActive ? " primary" : ""}`}
@@ -921,7 +1126,15 @@ export function WriteWorkspace({
         </div>
       ) : null}
 
-      <p className="write-status">{status}</p>
+      <p className="write-status">
+        {status}
+        {hasSelection ? (
+          <span className="muted">
+            {" "}
+            · Click / Shift+click / Ctrl·⌘+click · ↑↓ shift · duration buttons edit selection
+          </span>
+        ) : null}
+      </p>
 
       <div
         className={`write-body${trayOpen ? " with-clip-tray" : ""}${
@@ -943,6 +1156,9 @@ export function WriteWorkspace({
             </label>
             <p className="muted write-cursor-hint">
               Bar {doc.cursor.measureIndex + 1} · {doc.stepDuration}
+              {hasSelection
+                ? ` · ${doc.selectionIds.length} selected`
+                : ""}
               {doc.sections.length ? ` · ${doc.sections.length} sections` : ""}
             </p>
           </div>
@@ -953,6 +1169,7 @@ export function WriteWorkspace({
             listenEventIndex={listenEventIndex}
             listenTransport={listenTransport}
             onSeekListen={onSeekListen}
+            writeSelection={writeSelection}
             onSeekPractice={(eventIndex) => {
               // Map event → approximate measure via timestamp
               const ev = events[eventIndex];
@@ -963,10 +1180,13 @@ export function WriteWorkspace({
                 Math.max(0, Math.floor(ev.timestamp / Math.max(0.25, quartersPerBar))),
               );
               stackRef.current.dispatch({ type: "setCursor", measureIndex, onsetQuarters: 0 });
-              // Select first note in measure if any
               const m = doc.measures[measureIndex];
               const note = m?.notes[0];
-              stackRef.current.dispatch({ type: "select", noteId: note?.id ?? null });
+              stackRef.current.dispatch({
+                type: "select",
+                noteId: note?.id ?? null,
+                mode: "replace",
+              });
             }}
           />
         </div>

@@ -1,5 +1,6 @@
 export * from "./document";
 export * from "./commands";
+export * from "./noteOrder";
 export * from "./toMusicXml";
 export * from "./fromMusicXml";
 export * from "./songForms";

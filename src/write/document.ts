@@ -117,7 +117,10 @@ export interface WriteDocument {
   sections: SongSection[];
   writeMode: WriteComplexity;
   cursor: WriteCursor;
-  selectionId: string | null;
+  /** Selected write-note ids (document order not required; last is primary). */
+  selectionIds: string[];
+  /** Anchor for Shift-range selection. */
+  selectionAnchorId: string | null;
   /** Active duration for step entry. */
   stepDuration: DurationId;
   /** When true, next note starts a tie from previous same pitch. */
@@ -213,10 +216,31 @@ export function createBlankDocument(opts?: {
     sections: [],
     writeMode: opts?.writeMode ?? "simple",
     cursor: { measureIndex: 0, onsetQuarters: 0, staffIndex: 0, voice: 1 },
-    selectionId: null,
+    selectionIds: [],
+    selectionAnchorId: null,
     stepDuration: "1/4",
     tieNext: false,
   };
+}
+
+/** Last-clicked / primary note in the selection, if any. */
+export function primarySelectionId(doc: WriteDocument): string | null {
+  return doc.selectionIds.length ? doc.selectionIds[doc.selectionIds.length - 1]! : null;
+}
+
+export function clearSelection(doc: WriteDocument) {
+  doc.selectionIds = [];
+  doc.selectionAnchorId = null;
+}
+
+export function setSelection(doc: WriteDocument, ids: string[], anchorId?: string | null) {
+  doc.selectionIds = [...new Set(ids)];
+  doc.selectionAnchorId =
+    anchorId !== undefined
+      ? anchorId
+      : doc.selectionIds.length
+        ? doc.selectionIds[doc.selectionIds.length - 1]!
+        : null;
 }
 
 export function cloneDocument(doc: WriteDocument): WriteDocument {

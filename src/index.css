@@ -1550,6 +1550,73 @@ button.linkish {
   margin-right: 0.15rem;
 }
 
+.write-select-help {
+  position: relative;
+}
+
+.write-select-help > summary {
+  list-style: none;
+  cursor: pointer;
+}
+
+.write-select-help > summary::-webkit-details-marker {
+  display: none;
+}
+
+.write-select-help-btn {
+  min-width: 1.85rem;
+  padding-inline: 0.45rem;
+  font-weight: 600;
+}
+
+.write-select-help-panel {
+  position: absolute;
+  z-index: 30;
+  top: calc(100% + 0.3rem);
+  left: 0;
+  width: min(22rem, calc(100vw - 2rem));
+  padding: 0.75rem 0.9rem;
+  background: rgba(255, 252, 247, 0.98);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow);
+  color: var(--ink);
+  font-size: 0.88rem;
+  line-height: 1.45;
+}
+
+.write-select-help-title {
+  margin: 0 0 0.35rem;
+  font-size: 0.8rem;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+  color: var(--ink-soft);
+}
+
+.write-select-help-panel .write-select-help-title + ul + .write-select-help-title {
+  margin-top: 0.75rem;
+}
+
+.write-select-help-panel ul {
+  margin: 0;
+  padding-left: 1.1rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+}
+
+.write-select-help-panel kbd {
+  display: inline-block;
+  padding: 0.05rem 0.35rem;
+  border: 1px solid var(--line);
+  border-radius: 0.3rem;
+  background: color-mix(in srgb, var(--paper) 70%, var(--ink) 6%);
+  font-size: 0.78em;
+  font-family: inherit;
+  line-height: 1.3;
+}
+
 .write-score-pane-bar {
   display: flex;
   flex-wrap: wrap;
@@ -1573,6 +1640,11 @@ button.linkish {
   flex-wrap: wrap;
   gap: 0.4rem;
   align-items: center;
+}
+
+.write-duration-group .mode-seg {
+  min-width: 2.25rem;
+  padding-inline: 0.65rem;
 }
 
 .write-tools-sep {

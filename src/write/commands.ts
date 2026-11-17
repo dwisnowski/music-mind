@@ -1,4 +1,5 @@
 import {
+  clearSelection,
   cloneDocument,
   createEmptyMeasure,
   defaultStaffForMidi,
@@ -6,6 +7,7 @@ import {
   measureCapacityQuarters,
   midiToPitch,
   newNoteId,
+  setSelection,
   type ArticulationId,
   type DurationId,
   type DynamicId,
@@ -15,6 +17,9 @@ import {
   type WriteLyric,
   type WriteNote,
 } from "./document";
+import { listOrderedWriteNotes, rangeSelectIds } from "./noteOrder";
+
+export type SelectMode = "replace" | "toggle" | "range";
 
 export type WriteCommand =
   | { type: "setMeta"; title?: string; composer?: string; bpm?: number; keyFifths?: number; beats?: number; beatType?: number }
@@ -22,11 +27,13 @@ export type WriteCommand =
   | { type: "setStepDuration"; duration: DurationId }
   | { type: "setTieNext"; tieNext: boolean }
   | { type: "setCursor"; measureIndex: number; onsetQuarters?: number; staffIndex?: number; voice?: number }
-  | { type: "select"; noteId: string | null }
+  | { type: "select"; noteId: string | null; mode?: SelectMode }
   | { type: "insertNotes"; midis: number[]; durationQuarters?: number }
   | { type: "insertRest" }
   | { type: "deleteSelection" }
   | { type: "deleteBackward" }
+  | { type: "setSelectionDuration"; duration: DurationId }
+  | { type: "shiftSelection"; semitones: number }
   | { type: "setLyric"; noteId: string; lyric: WriteLyric | undefined }
   | { type: "setArticulations"; noteId: string; articulations: ArticulationId[] }
   | { type: "setDynamics"; noteId: string; dynamics: DynamicId | undefined }
@@ -57,11 +64,15 @@ export type WriteCommand =
       fromMeasure: number;
     };
 
+const NO_HISTORY = new Set<WriteCommand["type"]>(["select", "setCursor"]);
+
 export class WriteCommandStack {
   private past: WriteDocument[] = [];
   private future: WriteDocument[] = [];
   private doc: WriteDocument;
   private listeners = new Set<(doc: WriteDocument) => void>();
+  /** Bumps when musical content changes (not bare selection/cursor). */
+  private _contentEpoch = 0;
 
   constructor(initial: WriteDocument) {
     this.doc = initial;
@@ -69,6 +80,10 @@ export class WriteCommandStack {
 
   get document(): WriteDocument {
     return this.doc;
+  }
+
+  get contentEpoch(): number {
+    return this._contentEpoch;
   }
 
   subscribe(fn: (doc: WriteDocument) => void): () => void {
@@ -85,6 +100,7 @@ export class WriteCommandStack {
     if (this.past.length > 100) this.past.shift();
     this.future = [];
     this.doc = next;
+    this._contentEpoch += 1;
     this.emit();
   }
 
@@ -93,6 +109,7 @@ export class WriteCommandStack {
     if (!prev) return;
     this.future.push(cloneDocument(this.doc));
     this.doc = prev;
+    this._contentEpoch += 1;
     this.emit();
   }
 
@@ -101,6 +118,7 @@ export class WriteCommandStack {
     if (!next) return;
     this.past.push(cloneDocument(this.doc));
     this.doc = next;
+    this._contentEpoch += 1;
     this.emit();
   }
 
@@ -114,6 +132,11 @@ export class WriteCommandStack {
 
   dispatch(cmd: WriteCommand) {
     const next = applyCommand(cloneDocument(this.doc), cmd);
+    if (NO_HISTORY.has(cmd.type)) {
+      this.doc = next;
+      this.emit();
+      return;
+    }
     this.commit(next);
   }
 
@@ -122,6 +145,7 @@ export class WriteCommandStack {
     this.past = [];
     this.future = [];
     this.doc = doc;
+    this._contentEpoch += 1;
     this.emit();
   }
 }
@@ -202,7 +226,17 @@ function insertAtCursor(doc: WriteDocument, note: WriteNote) {
       }
     }
   }
-  doc.selectionId = firstId ?? note.id;
+  setSelection(doc, firstId ? [firstId] : [note.id], firstId ?? note.id);
+}
+
+function forEachSelectedNote(doc: WriteDocument, fn: (note: WriteNote) => void) {
+  if (!doc.selectionIds.length) return;
+  const wanted = new Set(doc.selectionIds);
+  for (const m of doc.measures) {
+    for (const n of m.notes) {
+      if (wanted.has(n.id)) fn(n);
+    }
+  }
 }
 
 export function applyCommand(doc: WriteDocument, cmd: WriteCommand): WriteDocument {
@@ -231,9 +265,29 @@ export function applyCommand(doc: WriteDocument, cmd: WriteCommand): WriteDocume
       if (cmd.staffIndex != null) doc.cursor.staffIndex = cmd.staffIndex;
       if (cmd.voice != null) doc.cursor.voice = cmd.voice;
       return doc;
-    case "select":
-      doc.selectionId = cmd.noteId;
+    case "select": {
+      const mode = cmd.mode ?? "replace";
+      if (cmd.noteId == null) {
+        clearSelection(doc);
+        return doc;
+      }
+      if (mode === "replace") {
+        setSelection(doc, [cmd.noteId], cmd.noteId);
+        return doc;
+      }
+      if (mode === "toggle") {
+        const set = new Set(doc.selectionIds);
+        if (set.has(cmd.noteId)) set.delete(cmd.noteId);
+        else set.add(cmd.noteId);
+        setSelection(doc, [...set], cmd.noteId);
+        return doc;
+      }
+      // range
+      const ordered = listOrderedWriteNotes(doc);
+      const anchor = doc.selectionAnchorId ?? doc.selectionIds[0] ?? cmd.noteId;
+      setSelection(doc, rangeSelectIds(ordered, anchor, cmd.noteId), anchor);
       return doc;
+    }
     case "insertNotes": {
       const duration = cmd.durationQuarters ?? DURATION_QUARTERS[doc.stepDuration];
       const midis = [...cmd.midis].sort((a, b) => a - b);
@@ -272,15 +326,12 @@ export function applyCommand(doc: WriteDocument, cmd: WriteCommand): WriteDocume
       return doc;
     }
     case "deleteSelection": {
-      if (!doc.selectionId) return doc;
+      if (!doc.selectionIds.length) return doc;
+      const wanted = new Set(doc.selectionIds);
       for (const m of doc.measures) {
-        const i = m.notes.findIndex((n) => n.id === doc.selectionId);
-        if (i >= 0) {
-          m.notes.splice(i, 1);
-          doc.selectionId = null;
-          break;
-        }
+        m.notes = m.notes.filter((n) => !wanted.has(n.id));
       }
+      clearSelection(doc);
       return doc;
     }
     case "deleteBackward": {
@@ -300,7 +351,31 @@ export function applyCommand(doc: WriteDocument, cmd: WriteCommand): WriteDocume
       const idx = m.notes.findIndex((n) => n.id === last.id);
       if (idx >= 0) m.notes.splice(idx, 1);
       doc.cursor.onsetQuarters = Math.max(0, doc.cursor.onsetQuarters - last.durationQuarters);
-      doc.selectionId = null;
+      clearSelection(doc);
+      return doc;
+    }
+    case "setSelectionDuration": {
+      if (!doc.selectionIds.length) return doc;
+      const q = DURATION_QUARTERS[cmd.duration];
+      doc.stepDuration = cmd.duration;
+      forEachSelectedNote(doc, (n) => {
+        n.durationQuarters = q;
+      });
+      return doc;
+    }
+    case "shiftSelection": {
+      if (!doc.selectionIds.length || !cmd.semitones) return doc;
+      forEachSelectedNote(doc, (n) => {
+        if (n.kind === "rest" || !n.pitches.length) return;
+        n.pitches = n.pitches.map((p) => {
+          const midi = Math.max(0, Math.min(127, p.midi + cmd.semitones));
+          return midiToPitch(midi);
+        });
+        // Keep chord tones on the same staff based on the middle pitch
+        const mid = n.pitches[Math.floor(n.pitches.length / 2)]!.midi;
+        n.staffIndex = defaultStaffForMidi(mid);
+        n.voice = n.staffIndex === 0 ? 1 : 2;
+      });
       return doc;
     }
     case "setLyric": {
@@ -400,7 +475,7 @@ export function applyCommand(doc: WriteDocument, cmd: WriteCommand): WriteDocume
           cursor += sec.barCount;
         }
         doc.cursor = { measureIndex: 0, onsetQuarters: 0, staffIndex: 0, voice: 1 };
-        doc.selectionId = null;
+        clearSelection(doc);
       } else {
         // Stamp rehearsal marks onto existing measures
         for (const sec of doc.sections) {
