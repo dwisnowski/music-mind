@@ -12,6 +12,11 @@ dist
 dist-ssr
 *.local
 .wrangler
+.dev.vars
+
+# Personal Musicnotes sources + converted scores (never commit; see ADR 0018)
+private-sources/
+private-staging/
 
 # Capacitor / Xcode
 ios/App/Pods

@@ -10,3 +10,5 @@ Bundled for offline / first-run use. The in-app **MuseTrainer library** browser 
 | `gymnopedie-no1.mxl` | Satie — Gymnopédie No. 1 | [MuseTrainer public-domain library](https://github.com/musetrainer/library) (`Erik_Satie_-_Gymnopedie_No.1.mxl`) |
 
 Beethoven, Debussy, and Satie works are public domain. MuseTrainer redistributes MusicXML editions for practice apps.
+
+Personal / Access-gated scores are **not** stored here. See [ADR 0018](../../docs/adr/0018-private-access-scores.md) and [docs/private-scores.md](../../docs/private-scores.md).

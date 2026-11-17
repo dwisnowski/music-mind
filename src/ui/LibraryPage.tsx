@@ -5,6 +5,8 @@ export interface LibraryPageProps {
   onLoadFile: (file: File | null) => void;
   onLoadSample: (sample: SampleScore) => void;
   loadingSampleId: string | null;
+  privateAccessHint?: string | null;
+  onPrivateSignIn?: () => void;
   onEnterWrite: () => void;
   onEnterFreePractice: () => void;
   onBrowseGames: () => void;
@@ -14,6 +16,8 @@ export function LibraryPage({
   onLoadFile,
   onLoadSample,
   loadingSampleId,
+  privateAccessHint,
+  onPrivateSignIn,
   onEnterWrite,
   onEnterFreePractice,
   onBrowseGames,
@@ -50,7 +54,12 @@ export function LibraryPage({
           />
         </label>
       </div>
-      <LibraryBrowser onSelect={onLoadSample} loadingId={loadingSampleId} />
+      <LibraryBrowser
+        onSelect={onLoadSample}
+        loadingId={loadingSampleId}
+        privateAccessHint={privateAccessHint}
+        onPrivateSignIn={onPrivateSignIn}
+      />
     </div>
   );
 }

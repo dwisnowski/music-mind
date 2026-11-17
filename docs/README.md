@@ -27,3 +27,4 @@ Architecture decisions and project notes for Music Mind.
 - [0015 – Write riff clip tray](adr/0015-write-riff-clip-tray.md) — Hybrid rolling buffer + clip tray in Write; velocity + pedal retained; insert into score; optional Free Practice user riffs (extends 0011 / 0012)
 - [0016 – Write UX declutter](adr/0016-write-ux-declutter.md) — Score-first Write chrome; no empty form panel; opt-in riff tray; File menu for secondary actions (extends 0011 / 0015)
 - [0017 – Write note multi-select](adr/0017-write-note-multi-select.md) — Click/Shift/Ctrl·Cmd selection on OSMD; highlight; delete / transpose / duration on the selection (extends 0011 / 0016)
+- [0018 – Private Access-gated personal scores](adr/0018-private-access-scores.md) — KV + path-scoped Cloudflare Access + Worker email allowlist; Personal library UI; Quick start stays public-domain only

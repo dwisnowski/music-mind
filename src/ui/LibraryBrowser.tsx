@@ -1,11 +1,15 @@
 import { useEffect, useMemo, useState } from "react";
 import { fetchArabesqueLibrary } from "../score/arabesqueLibrary";
 import { fetchMuseTrainerLibrary } from "../score/museTrainerLibrary";
+import { PRIVATE_SAMPLE_SCORES } from "../score/privateSamples";
 import { SAMPLE_SCORES, type SampleScore } from "../score/samples";
 
 interface LibraryBrowserProps {
   onSelect: (sample: SampleScore) => void;
   loadingId?: string | null;
+  /** Shown under Personal library when a gated score needs Access sign-in. */
+  privateAccessHint?: string | null;
+  onPrivateSignIn?: () => void;
 }
 
 type RemoteSource = "MuseTrainer" | "Arabesque";
@@ -19,7 +23,12 @@ function remoteSubtitle(sample: RemoteScore): string {
   return `${sample.composer} · Arabesque`;
 }
 
-export function LibraryBrowser({ onSelect, loadingId }: LibraryBrowserProps) {
+export function LibraryBrowser({
+  onSelect,
+  loadingId,
+  privateAccessHint,
+  onPrivateSignIn,
+}: LibraryBrowserProps) {
   const [museTrainer, setMuseTrainer] = useState<SampleScore[] | null>(null);
   const [museTrainerError, setMuseTrainerError] = useState<string | null>(null);
   const [arabesque, setArabesque] = useState<SampleScore[] | null>(null);
@@ -95,6 +104,40 @@ export function LibraryBrowser({ onSelect, loadingId }: LibraryBrowserProps) {
               >
                 <span className="sample-title">{sample.title}</span>
                 <span className="sample-composer">{sample.composer}</span>
+              </button>
+            </li>
+          ))}
+        </ul>
+      </div>
+
+      <div className="library-section">
+        <h3 className="library-heading">Personal library</h3>
+        <p className="library-credit">
+          Owner-only scores behind Cloudflare Access (not publicly redistributed).
+        </p>
+        {privateAccessHint ? (
+          <p className="library-status error">
+            {privateAccessHint}{" "}
+            {onPrivateSignIn ? (
+              <button type="button" className="btn linkish" onClick={onPrivateSignIn}>
+                Sign in
+              </button>
+            ) : null}
+          </p>
+        ) : null}
+        <ul className="sample-list">
+          {PRIVATE_SAMPLE_SCORES.map((sample) => (
+            <li key={sample.id}>
+              <button
+                type="button"
+                className="btn large"
+                disabled={loadingId === sample.id}
+                onClick={() => onSelect(sample)}
+              >
+                <span className="sample-title">{sample.title}</span>
+                <span className="sample-composer">
+                  {loadingId === sample.id ? "Loading…" : sample.composer}
+                </span>
               </button>
             </li>
           ))}

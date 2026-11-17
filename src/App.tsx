@@ -14,6 +14,7 @@ import {
 import { MidiNoteOutput } from "./midi/midiNoteOutput";
 import { readScoreFile } from "./score/loadMusicXml";
 import { parseMusicXmlTimeline } from "./score/parseMusicXmlTimeline";
+import { isPrivateSamplePath } from "./score/privateSamples";
 import { type SampleScore } from "./score/samples";
 import type { Hand, LoadedScore } from "./score/types";
 import { FeedbackEngine, type FeedbackState } from "./practice/feedbackEngine";
@@ -164,6 +165,7 @@ export default function App() {
   const [selectedInputId, setSelectedInputId] = useState<string | null>(null);
   const [selectedOutputId, setSelectedOutputId] = useState<string | null>(null);
   const [midiError, setMidiError] = useState<string | null>(null);
+  const [privateAccessHint, setPrivateAccessHint] = useState<string | null>(null);
   const [score, setScore] = useState<LoadedScore | null>(null);
   const [feedback, setFeedback] = useState<FeedbackState | null>(null);
   const [hand, setHand] = useState<Hand>("both");
@@ -945,12 +947,30 @@ export default function App() {
     }
   }, [hand]);
 
+  const onPrivateSignIn = useCallback(() => {
+    const returnTo = encodeURIComponent(
+      `${window.location.origin}/samples/private/`,
+    );
+    window.location.href = `/cdn-cgi/access/login?redirect_url=${returnTo}`;
+  }, []);
+
   const onLoadSample = useCallback(
     async (sample: SampleScore) => {
       setLoadingSampleId(sample.id);
+      setPrivateAccessHint(null);
       try {
-        const res = await fetch(sample.path);
+        const res = await fetch(sample.path, {
+          credentials: isPrivateSamplePath(sample.path) ? "include" : "same-origin",
+        });
         if (!res.ok) {
+          if (isPrivateSamplePath(sample.path) && (res.status === 401 || res.status === 403)) {
+            const msg =
+              (await res.text().catch(() => "")) ||
+              "Sign in with Cloudflare Access to load personal scores.";
+            setPrivateAccessHint(msg);
+            setMidiError(msg);
+            return;
+          }
           setMidiError(`Could not load “${sample.title}”.`);
           return;
         }
@@ -1332,6 +1352,8 @@ export default function App() {
             onLoadFile={(file) => void onLoadFile(file)}
             onLoadSample={(sample) => void onLoadSample(sample)}
             loadingSampleId={loadingSampleId}
+            privateAccessHint={privateAccessHint}
+            onPrivateSignIn={onPrivateSignIn}
             onEnterWrite={() => enterWrite()}
             onEnterFreePractice={() => enterFreePractice()}
             onBrowseGames={goGames}
@@ -1503,6 +1525,8 @@ export default function App() {
             onLoadFile={(file) => void onLoadFile(file)}
             onLoadSample={(sample) => void onLoadSample(sample)}
             loadingSampleId={loadingSampleId}
+            privateAccessHint={privateAccessHint}
+            onPrivateSignIn={onPrivateSignIn}
             onEnterWrite={() => enterWrite()}
             onEnterFreePractice={() => enterFreePractice()}
             onBrowseGames={goGames}

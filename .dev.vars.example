@@ -1,0 +1,7 @@
+# Copy to .dev.vars for local private-score loads without Cloudflare Access.
+PRIVATE_SCORES_DEV_BYPASS=1
+OWNER_EMAILS=dwisnows@gmail.com
+
+# After Access is configured, you can omit the bypass and set:
+# CF_ACCESS_TEAM_DOMAIN=yourteam.cloudflareaccess.com
+# CF_ACCESS_AUD=<aud-tag>

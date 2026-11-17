@@ -3,6 +3,7 @@ import { ScoreView, type ListenTransport, type WriteNoteClickInfo } from "./Scor
 import { SongFormHelper } from "./SongFormHelper";
 import { SongFormPicker } from "./SongFormPicker";
 import { LibraryBrowser } from "./LibraryBrowser";
+import { isPrivateSamplePath } from "../score/privateSamples";
 import {
   CaptureSession,
   DOCK_DEFAULT_VELOCITY,
@@ -119,6 +120,7 @@ export function WriteWorkspace({
   const [status, setStatus] = useState("Play notes to write, or choose a song template.");
   const [lyricDraft, setLyricDraft] = useState("");
   const [loadingSampleId, setLoadingSampleId] = useState<string | null>(null);
+  const [privateAccessHint, setPrivateAccessHint] = useState<string | null>(null);
   const [trayTakeActive, setTrayTakeActive] = useState(false);
   const [alsoSaveRecordToTray, setAlsoSaveRecordToTray] = useState(false);
   const [clipReloadToken, setClipReloadToken] = useState(0);
@@ -438,11 +440,31 @@ export function WriteWorkspace({
     }
   };
 
+  const onPrivateSignIn = () => {
+    const returnTo = encodeURIComponent(
+      `${window.location.origin}/samples/private/`,
+    );
+    window.location.href = `/cdn-cgi/access/login?redirect_url=${returnTo}`;
+  };
+
   const onLoadSample = async (sample: SampleScore) => {
     setLoadingSampleId(sample.id);
+    setPrivateAccessHint(null);
     try {
-      const res = await fetch(sample.path);
-      if (!res.ok) throw new Error(`Could not load “${sample.title}”.`);
+      const res = await fetch(sample.path, {
+        credentials: isPrivateSamplePath(sample.path) ? "include" : "same-origin",
+      });
+      if (!res.ok) {
+        if (isPrivateSamplePath(sample.path) && (res.status === 401 || res.status === 403)) {
+          const msg =
+            (await res.text().catch(() => "")) ||
+            "Sign in with Cloudflare Access to load personal scores.";
+          setPrivateAccessHint(msg);
+          setStatus(msg);
+          return;
+        }
+        throw new Error(`Could not load “${sample.title}”.`);
+      }
       const buffer = await res.arrayBuffer();
       const fileName =
         decodeURIComponent(sample.path.split("/").pop() ?? "") || `${sample.id}.musicxml`;
@@ -1275,6 +1297,8 @@ export function WriteWorkspace({
           <LibraryBrowser
             onSelect={(sample) => void onLoadSample(sample)}
             loadingId={loadingSampleId}
+            privateAccessHint={privateAccessHint}
+            onPrivateSignIn={onPrivateSignIn}
           />
         </div>
       ) : null}
