@@ -10,7 +10,7 @@ The owner has personal piano arrangements (Musicnotes page captures and derived 
 
 ## Decision
 
-- **Personal scores live in Workers KV** (`PRIVATE_SCORES` → namespace `music-mind-private-scores`). R2 was preferred but is not enabled on this Cloudflare account; KV holds the same private binaries with a Worker gate. The public repo stores only catalog metadata (`id`, `title`, `composer`, object key) in `src/score/privateSamples.ts`. Source PNGs and converted `.mxl` stay under gitignored `private-sources/`.
+- **Personal score files live in the private GitHub repo** [`dwisnowski/music-mind-scores`](https://github.com/dwisnowski/music-mind-scores) (`scores/`, `sources/`). **Production serves them from Workers KV** (`PRIVATE_SCORES`) behind a Worker gate (R2 was preferred but not enabled on this account). The public Music Mind repo stores only catalog metadata in `src/score/privateSamples.ts`. Never commit score bytes or page PNGs here.
 - **Path-scoped Cloudflare Access** protects `musicmind.wildideazone.com/samples/private/*` (and related private API paths) with email OTP. Policy allowlists the owner email (default `dwisnows@gmail.com`, overridable via `OWNER_EMAILS`).
 - **Worker defense-in-depth:** before reading a KV key, the Worker verifies the Access JWT (header or `CF_Authorization` cookie) and checks the email against `OWNER_EMAILS`. Production fails closed if Access secrets are unset. Responses use `Cache-Control: private, no-store`.
 - **UI:** Library shows a **Personal library** section. Fetches use `credentials: "include"`. Unauthenticated users get a sign-in prompt; Quick start and remote catalogs stay public and unchanged.

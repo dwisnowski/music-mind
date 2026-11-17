@@ -56,6 +56,17 @@ npx wrangler kv key put --binding=PRIVATE_SCORES --remote beat-it.mxl --path=pri
 
 Register the same filename in `src/score/privateSamples.ts` (`path: "/samples/private/beat-it.mxl"`).
 
-## Source PNGs
+## Source of truth (private GitHub)
 
-Keep Musicnotes page captures under gitignored `private-sources/sheet-music/`. Never place them under `public/`.
+Converted MusicXML and page PNGs live in the private repo
+[dwisnowski/music-mind-scores](https://github.com/dwisnowski/music-mind-scores)
+(`scores/*.musicxml`, `sources/`). Do not commit those files into this public repo.
+
+Local copies may still exist under gitignored `private-sources/` / `private-staging/` for conversion work. Never place them under `public/`.
+
+Production currently serves personal scores from Workers KV (keys match `scores/` filenames). Re-upload after editing:
+
+```bash
+npx wrangler kv key put --binding=PRIVATE_SCORES --remote moonlight-sonata.musicxml \
+  --path=../music-mind-scores/scores/moonlight-sonata.musicxml
+```
