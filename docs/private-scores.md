@@ -22,6 +22,10 @@ npx wrangler secret put CF_ACCESS_AUD
 
 The Access API token used by automation could not create this app (403). Create it once in the Zero Trust dashboard as above. Until `CF_ACCESS_AUD` is set, production returns 403 for private scores (fail closed).
 
+### Why `/cdn-cgi/access/login` 404s
+
+That path only exists after an Access application is attached to the hostname/path. Until you create the app above, Sign in should open a gated score URL (e.g. `/samples/private/moonlight-sonata.musicxml`); after the Access app exists, Cloudflare will show the email OTP page instead of a Worker 403.
+
 `OWNER_EMAILS` defaults to `dwisnows@gmail.com` via `wrangler.jsonc` `vars`. Override with a secret if needed.
 
 ## Local development

@@ -441,10 +441,7 @@ export function WriteWorkspace({
   };
 
   const onPrivateSignIn = () => {
-    const returnTo = encodeURIComponent(
-      `${window.location.origin}/samples/private/`,
-    );
-    window.location.href = `/cdn-cgi/access/login?redirect_url=${returnTo}`;
+    window.location.assign("/samples/private/moonlight-sonata.musicxml");
   };
 
   const onLoadSample = async (sample: SampleScore) => {

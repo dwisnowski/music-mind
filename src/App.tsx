@@ -948,10 +948,9 @@ export default function App() {
   }, [hand]);
 
   const onPrivateSignIn = useCallback(() => {
-    const returnTo = encodeURIComponent(
-      `${window.location.origin}/samples/private/`,
-    );
-    window.location.href = `/cdn-cgi/access/login?redirect_url=${returnTo}`;
+    // Hitting a gated score URL triggers Cloudflare Access when an Access app
+    // protects /samples/private/* — /cdn-cgi/access/login 404s until that exists.
+    window.location.assign("/samples/private/moonlight-sonata.musicxml");
   }, []);
 
   const onLoadSample = useCallback(
@@ -964,9 +963,11 @@ export default function App() {
         });
         if (!res.ok) {
           if (isPrivateSamplePath(sample.path) && (res.status === 401 || res.status === 403)) {
-            const msg =
-              (await res.text().catch(() => "")) ||
-              "Sign in with Cloudflare Access to load personal scores.";
+            const body = (await res.text().catch(() => "")).trim();
+            const notConfigured = /not configured/i.test(body);
+            const msg = notConfigured
+              ? "Personal scores need a Cloudflare Access app on /samples/private/* plus CF_ACCESS_AUD. See docs/private-scores.md."
+              : body || "Sign in with Cloudflare Access to load personal scores.";
             setPrivateAccessHint(msg);
             setMidiError(msg);
             return;
