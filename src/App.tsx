@@ -14,7 +14,12 @@ import {
 import { MidiNoteOutput } from "./midi/midiNoteOutput";
 import { readScoreFile } from "./score/loadMusicXml";
 import { parseMusicXmlTimeline } from "./score/parseMusicXmlTimeline";
-import { isPrivateSamplePath } from "./score/privateSamples";
+import {
+  beginPrivateAccessSignIn,
+  fetchScoreBytes,
+  PRIVATE_SAMPLE_SCORES,
+  takePendingPrivateSamplePath,
+} from "./score/privateSamples";
 import { type SampleScore } from "./score/samples";
 import type { Hand, LoadedScore } from "./score/types";
 import { FeedbackEngine, type FeedbackState } from "./practice/feedbackEngine";
@@ -948,9 +953,7 @@ export default function App() {
   }, [hand]);
 
   const onPrivateSignIn = useCallback(() => {
-    // Hitting a gated score URL triggers Cloudflare Access when an Access app
-    // protects /samples/private/* — /cdn-cgi/access/login 404s until that exists.
-    window.location.assign("/samples/private/moonlight-sonata.musicxml");
+    beginPrivateAccessSignIn();
   }, []);
 
   const onLoadSample = useCallback(
@@ -958,24 +961,25 @@ export default function App() {
       setLoadingSampleId(sample.id);
       setPrivateAccessHint(null);
       try {
-        const res = await fetch(sample.path, {
-          credentials: isPrivateSamplePath(sample.path) ? "include" : "same-origin",
-        });
-        if (!res.ok) {
-          if (isPrivateSamplePath(sample.path) && (res.status === 401 || res.status === 403)) {
-            const body = (await res.text().catch(() => "")).trim();
-            const notConfigured = /not configured/i.test(body);
-            const msg = notConfigured
-              ? "Personal scores need a Cloudflare Access app on /samples/private/* plus CF_ACCESS_AUD. See docs/private-scores.md."
-              : body || "Sign in with Cloudflare Access to load personal scores.";
-            setPrivateAccessHint(msg);
-            setMidiError(msg);
-            return;
-          }
+        const result = await fetchScoreBytes(sample.path);
+        if (result.kind === "needs-sign-in") {
+          beginPrivateAccessSignIn(sample.path);
+          return;
+        }
+        if (result.kind === "forbidden") {
+          const notConfigured = /not configured/i.test(result.message);
+          const msg = notConfigured
+            ? "Personal scores need a Cloudflare Access app on /samples/private/* plus CF_ACCESS_AUD. See docs/private-scores.md."
+            : result.message;
+          setPrivateAccessHint(msg);
+          setMidiError(msg);
+          return;
+        }
+        if (result.kind === "error") {
           setMidiError(`Could not load “${sample.title}”.`);
           return;
         }
-        const buffer = await res.arrayBuffer();
+        const buffer = result.buffer;
         const fileName =
           decodeURIComponent(sample.path.split("/").pop() ?? "") ||
           `${sample.id}.musicxml`;
@@ -992,6 +996,14 @@ export default function App() {
     },
     [onLoadFile],
   );
+
+  // After Cloudflare Access OTP, /api/private-scores/me bounces here; resume the score.
+  useEffect(() => {
+    const path = takePendingPrivateSamplePath();
+    if (!path) return;
+    const sample = PRIVATE_SAMPLE_SCORES.find((s) => s.path === path);
+    if (sample) void onLoadSample(sample);
+  }, [onLoadSample]);
 
   const onHandChange = useCallback((next: Hand) => {
     setHand(next);

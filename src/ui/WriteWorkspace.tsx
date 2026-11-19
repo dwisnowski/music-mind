@@ -3,7 +3,12 @@ import { ScoreView, type ListenTransport, type WriteNoteClickInfo } from "./Scor
 import { SongFormHelper } from "./SongFormHelper";
 import { SongFormPicker } from "./SongFormPicker";
 import { LibraryBrowser } from "./LibraryBrowser";
-import { isPrivateSamplePath } from "../score/privateSamples";
+import {
+  beginPrivateAccessSignIn,
+  fetchScoreBytes,
+  PRIVATE_SAMPLE_SCORES,
+  takePendingPrivateSamplePath,
+} from "../score/privateSamples";
 import {
   CaptureSession,
   DOCK_DEFAULT_VELOCITY,
@@ -441,28 +446,27 @@ export function WriteWorkspace({
   };
 
   const onPrivateSignIn = () => {
-    window.location.assign("/samples/private/moonlight-sonata.musicxml");
+    beginPrivateAccessSignIn();
   };
 
-  const onLoadSample = async (sample: SampleScore) => {
+  const onLoadSample = useCallback(async (sample: SampleScore) => {
     setLoadingSampleId(sample.id);
     setPrivateAccessHint(null);
     try {
-      const res = await fetch(sample.path, {
-        credentials: isPrivateSamplePath(sample.path) ? "include" : "same-origin",
-      });
-      if (!res.ok) {
-        if (isPrivateSamplePath(sample.path) && (res.status === 401 || res.status === 403)) {
-          const msg =
-            (await res.text().catch(() => "")) ||
-            "Sign in with Cloudflare Access to load personal scores.";
-          setPrivateAccessHint(msg);
-          setStatus(msg);
-          return;
-        }
+      const result = await fetchScoreBytes(sample.path);
+      if (result.kind === "needs-sign-in") {
+        beginPrivateAccessSignIn(sample.path);
+        return;
+      }
+      if (result.kind === "forbidden") {
+        setPrivateAccessHint(result.message);
+        setStatus(result.message);
+        return;
+      }
+      if (result.kind === "error") {
         throw new Error(`Could not load “${sample.title}”.`);
       }
-      const buffer = await res.arrayBuffer();
+      const buffer = result.buffer;
       const fileName =
         decodeURIComponent(sample.path.split("/").pop() ?? "") || `${sample.id}.musicxml`;
       const lower = fileName.toLowerCase();
@@ -475,7 +479,14 @@ export function WriteWorkspace({
     } finally {
       setLoadingSampleId(null);
     }
-  };
+  }, []);
+
+  useEffect(() => {
+    const path = takePendingPrivateSamplePath();
+    if (!path) return;
+    const sample = PRIVATE_SAMPLE_SCORES.find((s) => s.path === path);
+    if (sample) void onLoadSample(sample);
+  }, [onLoadSample]);
 
   const orderedNotes = useMemo(() => listOrderedWriteNotes(doc), [doc]);
   const selectedIdSet = useMemo(() => new Set(doc.selectionIds), [doc.selectionIds]);

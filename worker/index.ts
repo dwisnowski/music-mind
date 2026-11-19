@@ -30,6 +30,24 @@ export default {
           { status: auth.status },
         );
       }
+      // Browser navigations (Access OTP return) get an HTML bounce back to the SPA
+      // so users do not land on raw JSON. XHR/fetch still get JSON.
+      const mode = request.headers.get("Sec-Fetch-Mode");
+      const accept = request.headers.get("Accept") ?? "";
+      const wantsHtml =
+        mode === "navigate" || accept.includes("text/html");
+      if (wantsHtml) {
+        return new Response(
+          `<!DOCTYPE html><html lang="en"><meta charset="utf-8"/><title>Signed in</title><meta http-equiv="refresh" content="0;url=/"/><script>location.replace("/")</script><p>Signed in. <a href="/">Continue to Music Mind</a></p></html>`,
+          {
+            status: 200,
+            headers: {
+              "Content-Type": "text/html; charset=utf-8",
+              "Cache-Control": "private, no-store",
+            },
+          },
+        );
+      }
       return Response.json({ ok: true, email: auth.email });
     }
 
