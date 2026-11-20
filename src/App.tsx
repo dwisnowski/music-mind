@@ -20,6 +20,7 @@ import {
   PRIVATE_SAMPLE_SCORES,
   takePendingPrivateSamplePath,
 } from "./score/privateSamples";
+import { rememberRecentScore } from "./score/recentScores";
 import { type SampleScore } from "./score/samples";
 import type { Hand, LoadedScore } from "./score/types";
 import { FeedbackEngine, type FeedbackState } from "./practice/feedbackEngine";
@@ -929,8 +930,8 @@ export default function App() {
     clearToSurface("library");
   }, [clearToSurface]);
 
-  const onLoadFile = useCallback(async (file: File | null) => {
-    if (!file) return;
+  const onLoadFile = useCallback(async (file: File | null): Promise<boolean> => {
+    if (!file) return false;
     try {
       setMidiError(null);
       playerRef.current.stop({ emitEnded: false });
@@ -947,8 +948,10 @@ export default function App() {
       engineRef.current.load(loaded, hand);
       setAppMode("practice");
       setSettingsOpen(false);
+      return true;
     } catch (err) {
       setMidiError(err instanceof Error ? err.message : String(err));
+      return false;
     }
   }, [hand]);
 
@@ -987,7 +990,8 @@ export default function App() {
         const type = lower.endsWith(".mxl")
           ? "application/vnd.recordare.musicxml"
           : "application/vnd.recordare.musicxml+xml";
-        await onLoadFile(new File([buffer], fileName, { type }));
+        const opened = await onLoadFile(new File([buffer], fileName, { type }));
+        if (opened) rememberRecentScore(sample);
       } catch (err) {
         setMidiError(err instanceof Error ? err.message : String(err));
       } finally {

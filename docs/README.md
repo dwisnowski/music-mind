@@ -28,3 +28,4 @@ Architecture decisions and project notes for Music Mind.
 - [0016 – Write UX declutter](adr/0016-write-ux-declutter.md) — Score-first Write chrome; no empty form panel; opt-in riff tray; File menu for secondary actions (extends 0011 / 0015)
 - [0017 – Write note multi-select](adr/0017-write-note-multi-select.md) — Click/Shift/Ctrl·Cmd selection on OSMD; highlight; delete / transpose / duration on the selection (extends 0011 / 0016)
 - [0018 – Private Access-gated personal scores](adr/0018-private-access-scores.md) — KV + path-scoped Cloudflare Access + Worker email allowlist; Personal library UI; Quick start stays public-domain only
+- [0019 – Library grid and recent scores](adr/0019-library-grid-and-recent.md) — Collapsible Quick start; 4-column catalog grid with search, source, and sort; local recent list (extends 0013)

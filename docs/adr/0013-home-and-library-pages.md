@@ -22,6 +22,7 @@ Until now, Music Mind’s “home” was the practice empty state: Load score co
 - Capacitor / SPA hosting unchanged ([ADR 0001](0001-mvp-practice-architecture.md)).
 - Topbar is denser; Games keeps a nested picker inside its segment.
 - Particle animation adds an `animejs` dependency and a home-only canvas cost (paused offscreen).
+- Catalog layout and client-side recent scores are specified in [ADR 0019](0019-library-grid-and-recent.md).
 
 ## Code anchors
 

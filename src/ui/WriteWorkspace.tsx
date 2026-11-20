@@ -9,6 +9,7 @@ import {
   PRIVATE_SAMPLE_SCORES,
   takePendingPrivateSamplePath,
 } from "../score/privateSamples";
+import { rememberRecentScore } from "../score/recentScores";
 import {
   CaptureSession,
   DOCK_DEFAULT_VELOCITY,
@@ -435,13 +436,15 @@ export function WriteWorkspace({
     setStatus(`Loaded “${d.title}” into Write.`);
   };
 
-  const onLoadFile = async (file: File | null) => {
-    if (!file) return;
+  const onLoadFile = async (file: File | null): Promise<boolean> => {
+    if (!file) return false;
     try {
       const xmlStr = await readScoreFile(file);
       loadXmlString(xmlStr, file.name);
+      return true;
     } catch (err) {
       setStatus(err instanceof Error ? err.message : String(err));
+      return false;
     }
   };
 
@@ -473,7 +476,8 @@ export function WriteWorkspace({
       const type = lower.endsWith(".mxl")
         ? "application/vnd.recordare.musicxml"
         : "application/vnd.recordare.musicxml+xml";
-      await onLoadFile(new File([buffer], fileName, { type }));
+      const opened = await onLoadFile(new File([buffer], fileName, { type }));
+      if (opened) rememberRecentScore(sample);
     } catch (err) {
       setStatus(err instanceof Error ? err.message : String(err));
     } finally {

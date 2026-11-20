@@ -419,10 +419,15 @@ button.linkish {
 }
 
 .library-page {
-  max-width: 36rem;
+  max-width: 72rem;
   margin: 4vh auto 8vh;
   text-align: center;
   padding: 2rem;
+}
+
+.library-intro {
+  max-width: 36rem;
+  margin-inline: auto;
 }
 
 .library-page h2 {
@@ -672,6 +677,94 @@ button.linkish {
   margin-top: 1.75rem;
 }
 
+.library-catalog-toggle {
+  margin-bottom: 0.85rem;
+}
+
+.library-disclosure {
+  appearance: none;
+  border: 0;
+  background: none;
+  padding: 0;
+  color: inherit;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45rem;
+}
+
+.library-disclosure::before {
+  content: "";
+  width: 0.4rem;
+  height: 0.4rem;
+  border-right: 2px solid currentColor;
+  border-bottom: 2px solid currentColor;
+  transform: rotate(-45deg);
+  margin-top: -0.15rem;
+}
+
+.library-disclosure[aria-expanded="true"]::before {
+  transform: rotate(45deg);
+  margin-top: 0.1rem;
+}
+
+.library-quick-list {
+  max-width: 36rem;
+}
+
+.library-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  align-items: center;
+  margin-bottom: 0.75rem;
+}
+
+.library-toolbar .library-search {
+  flex: 1 1 14rem;
+}
+
+.library-filter select {
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  padding: 0.5rem 0.85rem;
+  background: rgba(255, 255, 255, 0.55);
+  font: inherit;
+  color: inherit;
+}
+
+.library-grid {
+  list-style: none;
+  margin: 0.85rem 0 0;
+  padding: 0;
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 0.65rem;
+}
+
+.library-grid .btn {
+  width: 100%;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0.15rem;
+  border-radius: 12px;
+  text-align: left;
+}
+
+@media (min-width: 640px) {
+  .library-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (min-width: 1000px) {
+  .library-grid {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+  }
+}
+
 .library-heading {
   font-family: var(--font-display);
   font-size: 1.05rem;
@@ -722,13 +815,6 @@ button.linkish {
   text-decoration: underline;
   cursor: pointer;
   font: inherit;
-}
-
-.library-scroll {
-  max-height: min(42vh, 22rem);
-  overflow: auto;
-  padding-right: 0.25rem;
-  margin-top: 0.85rem;
 }
 
 .sr-only {
